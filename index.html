@@ -380,47 +380,83 @@ function toStep3(){collectChCols();buildDefs();buildChDet();toStep(3);}
 // ─── Formula builder helpers ────────────────────────────────────────────────
 
 function colOpts(placeholder){
-  return['<option value="">'+placeholder+'</option>',...S.raw.headers.map((h,i)=>`<option value="${i}">${h}</option>`)].join('');
+  return[
+    `<option value="">— ${placeholder} —</option>`,
+    `<option value="__hc__">✏ Custom hardcoded value…</option>`,
+    ...S.raw.headers.map((h,i)=>`<option value="${i}">${h}</option>`)
+  ].join('');
 }
 
 function formulaWrap(fieldKey,isSKU){
   const fid=fieldKey.replace(/[^a-z0-9]/gi,'_');
-  const cfg=S.formulaCfg[fieldKey]||{f1:'',sep:'',f2:''};
-  const skuNote=isSKU?`<div style="font-size:10px;font-family:var(--mono);color:var(--amber);margin-top:4px;">⚠ SKU: only A–Z 0–9 . / - _ · length 3–45</div>`:'';
-  const sepPlaceholder=isSKU?'separator (. / - _ or blank)':'separator or blank';
+  const cfg=S.formulaCfg[fieldKey]||{f1:'',f1hc:'',sep:'',f2:'',f2hc:''};
+  const skuNote=isSKU?`<div style="font-size:10px;font-family:var(--mono);color:var(--amber);margin-top:6px;">⚠ SKU: only A–Z 0–9 . / - _ · length 3–45. Separator must be one of: . / - _</div>`:'';
+  const sepPlaceholder=isSKU?'. / - _ or blank':'separator or blank';
   return`<div class="formula-builder" id="fb_${fid}">
-    <div style="display:grid;grid-template-columns:1fr 80px 1fr;gap:6px;align-items:center;">
-      <select class="fb-f1" onchange="onFormulaPart('${fieldKey}','f1',this.value)">${colOpts('Field 1 column')}</select>
-      <input type="text" class="fb-sep" maxlength="5" placeholder="${sepPlaceholder}" value="${cfg.sep}" oninput="onFormulaSep('${fieldKey}',this,${isSKU})"/>
-      <select class="fb-f2" onchange="onFormulaPart('${fieldKey}','f2',this.value)">${colOpts('Field 2 (optional)')}</select>
+    <div style="display:grid;grid-template-columns:1fr 90px 1fr;gap:6px;align-items:start;">
+      <div>
+        <select class="fb-f1" onchange="onFormulaField('${fieldKey}','f1',this,'${fid}')">${colOpts('Field 1')}</select>
+        <input type="text" class="cv-inp fb-f1hc hidden" id="fb_${fid}_f1hc" placeholder="Hardcoded value for field 1" oninput="onFormulaHC('${fieldKey}','f1hc',this,'${fid}')"/>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:center;padding-top:2px;">
+        <span style="font-size:9px;font-family:var(--mono);color:var(--text3);">separator</span>
+        <input type="text" class="fb-sep" maxlength="5" placeholder="${sepPlaceholder}" value="${cfg.sep||''}" oninput="onFormulaSep('${fieldKey}',this,${isSKU})"/>
+      </div>
+      <div>
+        <select class="fb-f2" onchange="onFormulaField('${fieldKey}','f2',this,'${fid}')">${colOpts('Field 2 (optional)')}</select>
+        <input type="text" class="cv-inp fb-f2hc hidden" id="fb_${fid}_f2hc" placeholder="Hardcoded value for field 2" oninput="onFormulaHC('${fieldKey}','f2hc',this,'${fid}')"/>
+      </div>
     </div>
-    <div class="formula-preview" id="fp_${fid}" style="font-size:10px;font-family:var(--mono);color:var(--text3);margin-top:5px;min-height:16px;"></div>
+    <div class="formula-preview" id="fp_${fid}" style="font-size:10px;font-family:var(--mono);color:var(--text3);margin-top:6px;min-height:16px;"></div>
     ${skuNote}
   </div>`;
 }
 
-function onFormulaPart(field,part,val){
-  if(!S.formulaCfg[field])S.formulaCfg[field]={f1:'',sep:'',f2:''};
-  S.formulaCfg[field][part]=val;
+function onFormulaField(field,part,sel,fid){
+  if(!S.formulaCfg[field])S.formulaCfg[field]={f1:'',f1hc:'',sep:'',f2:'',f2hc:''};
+  const isHC=sel.value==='__hc__';
+  S.formulaCfg[field][part]=isHC?'__hc__':sel.value;
+  // Show/hide hardcoded input
+  const hcInp=document.getElementById(`fb_${fid}_${part}hc`);
+  if(hcInp){
+    hcInp.classList.toggle('hidden',!isHC);
+    if(!isHC){hcInp.value='';S.formulaCfg[field][part+'hc']='';}
+  }
+  sel.classList.toggle('custom',isHC);
+  updateFormulaPreview(field,field==='Product Code*');
+}
+
+function onFormulaHC(field,part,inp,fid){
+  if(!S.formulaCfg[field])S.formulaCfg[field]={f1:'',f1hc:'',sep:'',f2:'',f2hc:''};
+  S.formulaCfg[field][part]=inp.value;
   updateFormulaPreview(field,field==='Product Code*');
 }
 
 function onFormulaSep(field,inp,isSKU){
-  if(!S.formulaCfg[field])S.formulaCfg[field]={f1:'',sep:'',f2:''};
+  if(!S.formulaCfg[field])S.formulaCfg[field]={f1:'',f1hc:'',sep:'',f2:'',f2hc:''};
   let v=inp.value;
   if(isSKU){
-    // Only allow . / - _ or blank for SKU separator
-    v=v.replace(/[^.\/_\- ]/g,'').replace(/ /g,'');
+    v=v.replace(/[^.\/_\-]/g,'');
     inp.value=v;
-    const errId='sep-err-'+field.replace(/[^a-z0-9]/gi,'_');
-    let errEl=document.getElementById(errId);
-    if(inp.value!==v){
-      if(!errEl){errEl=document.createElement('div');errEl.id=errId;errEl.style.cssText='font-size:10px;color:var(--red);font-family:var(--mono);margin-top:2px;';inp.parentNode.appendChild(errEl);}
-      errEl.textContent=SKU_ALLOWED_MSG;
-    } else if(errEl){errEl.textContent='';}
   }
   S.formulaCfg[field].sep=v;
   updateFormulaPreview(field,isSKU);
+}
+
+function getFormulaPartValue(cfg,part,row){
+  const val=cfg[part];
+  if(!val||val==='')return'';
+  if(val==='__hc__')return cfg[part+'hc']||'';
+  const idx=parseInt(val);
+  return!isNaN(idx)&&idx>=0?String(row[idx]||'').trim():'';
+}
+
+function getFormulaPartLabel(cfg,part){
+  const val=cfg[part];
+  if(!val||val==='')return'';
+  if(val==='__hc__')return`"${cfg[part+'hc']||''}"`;
+  const idx=parseInt(val);
+  return!isNaN(idx)&&idx>=0?S.raw.headers[idx]:'';
 }
 
 function updateFormulaPreview(field,isSKU){
@@ -428,30 +464,23 @@ function updateFormulaPreview(field,isSKU){
   const el=document.getElementById('fp_'+fid);
   if(!el)return;
   const cfg=S.formulaCfg[field]||{};
-  const f1name=cfg.f1!==''&&cfg.f1!==undefined?S.raw.headers[cfg.f1]:'';
-  const f2name=cfg.f2!==''&&cfg.f2!==undefined?S.raw.headers[cfg.f2]:'';
-  if(!f1name){el.textContent='';return;}
-  // Show a sample with first data row
+  const f1label=getFormulaPartLabel(cfg,'f1');
+  if(!f1label){el.textContent='';return;}
+  const f2label=getFormulaPartLabel(cfg,'f2');
   const row=S.raw.rows[0]||[];
-  const v1=cfg.f1!==''?String(row[cfg.f1]||''):''
-  const v2=cfg.f2!==''?String(row[cfg.f2]||''):'';
+  const v1=getFormulaPartValue(cfg,'f1',row);
+  const v2=getFormulaPartValue(cfg,'f2',row);
   const sep=cfg.sep||'';
   let preview=v1+(v2?sep+v2:'');
   let warn='';
   if(isSKU){
     const cleaned=preview.replace(SKU_SPECIAL,'');
-    if(cleaned!==preview)warn=' ⚠ contains invalid chars';
+    if(cleaned!==preview)warn=' ⚠ invalid chars stripped';
     if(preview.length>0&&(preview.length<3||preview.length>45))warn+=' ⚠ length '+preview.length+' (need 3–45)';
     preview=cleaned;
   }
-  const parts=f1name+(f2name?' + "'+sep+'" + '+f2name:' (no field 2)');
+  const parts=f1label+(f2label?' + "'+sep+'" + '+f2label:'');
   el.innerHTML=`<span style="color:var(--text3)">Formula: ${parts}</span> &nbsp;→&nbsp; <span style="color:var(--amber)">Sample: ${preview||'—'}</span>${warn?`<span style="color:var(--red)">${warn}</span>`:''}`;
-  // Set select values
-  const fb=document.getElementById('fb_'+fid);
-  if(fb){
-    if(cfg.f1!==''&&cfg.f1!==undefined)fb.querySelector('.fb-f1').value=cfg.f1;
-    if(cfg.f2!==''&&cfg.f2!==undefined)fb.querySelector('.fb-f2').value=cfg.f2;
-  }
 }
 
 // ─── Mapper ─────────────────────────────────────────────────────────────────
@@ -678,11 +707,10 @@ function getV(row,f){
   if(idx==='__custom__') return S.customVals[f]||'';
   if(idx==='__formula__'){
     const cfg=S.formulaCfg[f]||{};
-    const v1=cfg.f1!==''&&cfg.f1!==undefined?String(row[cfg.f1]||'').trim():'';
-    const v2=cfg.f2!==''&&cfg.f2!==undefined?String(row[cfg.f2]||'').trim():'';
+    const v1=getFormulaPartValue(cfg,'f1',row);
+    const v2=getFormulaPartValue(cfg,'f2',row);
     const sep=cfg.sep||'';
     let result=v1+(v2?sep+v2:'');
-    // For SKU field, strip invalid chars
     if(f==='Product Code*')result=result.replace(SKU_SPECIAL,'');
     return result;
   }
