@@ -104,6 +104,10 @@ td.ci{color:var(--accent2);}
 ::-webkit-scrollbar{width:5px;height:5px;}
 ::-webkit-scrollbar-track{background:var(--surface);}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+.formula-builder{background:rgba(253,203,110,0.04);border:1px solid rgba(253,203,110,0.25);border-radius:6px;padding:10px;margin-top:5px;}
+.formula-builder select,.formula-builder input{font-size:11px;padding:5px 8px;}
+.fb-sep{border-color:rgba(253,203,110,0.4)!important;color:var(--amber)!important;text-align:center;}
+.formula-preview{padding:4px 0;}
 </style>
 </head>
 <body>
@@ -216,11 +220,11 @@ td.ci{color:var(--accent2);}
 
 </div>
 <script>
-const S={raw:null,mapping:{},chCols:[],defaults:{},imOut:null,citOut:null};
+const S={raw:null,mapping:{},chCols:[],defaults:{},imOut:null,citOut:null,customVals:{},formulaCfg:{}};
 
 const SCHEMA={
   mandatory:[
-    {f:'Product Code*',label:'Product Code (SKU)*',hint:'Unique per variant'},
+    {f:'Product Code*',label:'Product Code (SKU)*',hint:'Unique per variant',isSKU:true},
     {f:'Name*',label:'Product Name*',hint:'Auto-built from category+color+size if not mapped'},
     {f:'Category Code*',label:'Category Code*',hint:'Defaults to APPAREL'},
   ],
@@ -281,6 +285,10 @@ const ALIASES={
   'Weight (gms)':['weight','weight gms','weight g','wt'],
 };
 
+// SKU: only alphanumeric + . / - _   length 3–45
+const SKU_SPECIAL=/[^a-zA-Z0-9.\/_\-]/g;
+const SKU_ALLOWED_MSG='Only letters, numbers and . / - _ allowed';
+
 function norm(s){return s.toLowerCase().replace(/[^a-z0-9]/g,'');}
 
 function autoCol(f,label){
@@ -323,7 +331,7 @@ function parseXLSX(file){
     const headers=data[0].map(String);
     const rows=data.slice(1).filter(r=>r.some(c=>c!=='')).map(r=>r.map(c=>{
       const s=String(c??'');
-      return s.startsWith('=')?'':s; // skip formula cells
+      return s.startsWith('=')?'':s;
     }));
     S.raw={headers,rows};
     fileLoaded(file.name);
@@ -367,12 +375,92 @@ function toStep(n){
 }
 
 function toStep2(){buildMapper();toStep(2);}
-function toStep3(){buildDefs();buildChDet();toStep(3);}
+function toStep3(){collectChCols();buildDefs();buildChDet();toStep(3);}
+
+// ─── Formula builder helpers ────────────────────────────────────────────────
+
+function colOpts(placeholder){
+  return['<option value="">'+placeholder+'</option>',...S.raw.headers.map((h,i)=>`<option value="${i}">${h}</option>`)].join('');
+}
+
+function formulaWrap(fieldKey,isSKU){
+  const fid=fieldKey.replace(/[^a-z0-9]/gi,'_');
+  const cfg=S.formulaCfg[fieldKey]||{f1:'',sep:'',f2:''};
+  const skuNote=isSKU?`<div style="font-size:10px;font-family:var(--mono);color:var(--amber);margin-top:4px;">⚠ SKU: only A–Z 0–9 . / - _ · length 3–45</div>`:'';
+  const sepPlaceholder=isSKU?'separator (. / - _ or blank)':'separator or blank';
+  return`<div class="formula-builder" id="fb_${fid}">
+    <div style="display:grid;grid-template-columns:1fr 80px 1fr;gap:6px;align-items:center;">
+      <select class="fb-f1" onchange="onFormulaPart('${fieldKey}','f1',this.value)">${colOpts('Field 1 column')}</select>
+      <input type="text" class="fb-sep" maxlength="5" placeholder="${sepPlaceholder}" value="${cfg.sep}" oninput="onFormulaSep('${fieldKey}',this,${isSKU})"/>
+      <select class="fb-f2" onchange="onFormulaPart('${fieldKey}','f2',this.value)">${colOpts('Field 2 (optional)')}</select>
+    </div>
+    <div class="formula-preview" id="fp_${fid}" style="font-size:10px;font-family:var(--mono);color:var(--text3);margin-top:5px;min-height:16px;"></div>
+    ${skuNote}
+  </div>`;
+}
+
+function onFormulaPart(field,part,val){
+  if(!S.formulaCfg[field])S.formulaCfg[field]={f1:'',sep:'',f2:''};
+  S.formulaCfg[field][part]=val;
+  updateFormulaPreview(field,field==='Product Code*');
+}
+
+function onFormulaSep(field,inp,isSKU){
+  if(!S.formulaCfg[field])S.formulaCfg[field]={f1:'',sep:'',f2:''};
+  let v=inp.value;
+  if(isSKU){
+    // Only allow . / - _ or blank for SKU separator
+    v=v.replace(/[^.\/_\- ]/g,'').replace(/ /g,'');
+    inp.value=v;
+    const errId='sep-err-'+field.replace(/[^a-z0-9]/gi,'_');
+    let errEl=document.getElementById(errId);
+    if(inp.value!==v){
+      if(!errEl){errEl=document.createElement('div');errEl.id=errId;errEl.style.cssText='font-size:10px;color:var(--red);font-family:var(--mono);margin-top:2px;';inp.parentNode.appendChild(errEl);}
+      errEl.textContent=SKU_ALLOWED_MSG;
+    } else if(errEl){errEl.textContent='';}
+  }
+  S.formulaCfg[field].sep=v;
+  updateFormulaPreview(field,isSKU);
+}
+
+function updateFormulaPreview(field,isSKU){
+  const fid=field.replace(/[^a-z0-9]/gi,'_');
+  const el=document.getElementById('fp_'+fid);
+  if(!el)return;
+  const cfg=S.formulaCfg[field]||{};
+  const f1name=cfg.f1!==''&&cfg.f1!==undefined?S.raw.headers[cfg.f1]:'';
+  const f2name=cfg.f2!==''&&cfg.f2!==undefined?S.raw.headers[cfg.f2]:'';
+  if(!f1name){el.textContent='';return;}
+  // Show a sample with first data row
+  const row=S.raw.rows[0]||[];
+  const v1=cfg.f1!==''?String(row[cfg.f1]||''):''
+  const v2=cfg.f2!==''?String(row[cfg.f2]||''):'';
+  const sep=cfg.sep||'';
+  let preview=v1+(v2?sep+v2:'');
+  let warn='';
+  if(isSKU){
+    const cleaned=preview.replace(SKU_SPECIAL,'');
+    if(cleaned!==preview)warn=' ⚠ contains invalid chars';
+    if(preview.length>0&&(preview.length<3||preview.length>45))warn+=' ⚠ length '+preview.length+' (need 3–45)';
+    preview=cleaned;
+  }
+  const parts=f1name+(f2name?' + "'+sep+'" + '+f2name:' (no field 2)');
+  el.innerHTML=`<span style="color:var(--text3)">Formula: ${parts}</span> &nbsp;→&nbsp; <span style="color:var(--amber)">Sample: ${preview||'—'}</span>${warn?`<span style="color:var(--red)">${warn}</span>`:''}`;
+  // Set select values
+  const fb=document.getElementById('fb_'+fid);
+  if(fb){
+    if(cfg.f1!==''&&cfg.f1!==undefined)fb.querySelector('.fb-f1').value=cfg.f1;
+    if(cfg.f2!==''&&cfg.f2!==undefined)fb.querySelector('.fb-f2').value=cfg.f2;
+  }
+}
+
+// ─── Mapper ─────────────────────────────────────────────────────────────────
 
 function buildMapper(){
   const opts=[
     '<option value="">— skip —</option>',
-    '<option value="__custom__">✏ Enter custom value…</option>',
+    '<option value="__custom__">✏ Custom value (hardcoded)…</option>',
+    '<option value="__formula__">⚙ Custom formula (combine fields)…</option>',
     ...S.raw.headers.map((h,i)=>`<option value="${i}">${h}</option>`)
   ].join('');
 
@@ -383,23 +471,26 @@ function buildMapper(){
     fields.forEach(field=>{
       const ai=autoCol(field.f,field.label);
       const isMand=group==='mandatory';
-      let cv='<span class="cv">—</span>';
+      const isSKU=!!field.isSKU;
+      let cvSpan='<span class="cv">—</span>';
       if(ai!==-1){
         const n=S.raw.rows.filter(r=>r[ai]&&String(r[ai]).trim()).length;
         const p=Math.round(n/S.raw.rows.length*100);
-        cv=`<span class="cv ${p>=80?'g':'a'}">${p}% filled</span>`;
+        cvSpan=`<span class="cv ${p>=80?'g':'a'}">${p}% filled</span>`;
       }
       const selId=`mp_${field.f.replace(/[^a-z0-9]/gi,'_')}`;
       const inpId=`cv_${field.f.replace(/[^a-z0-9]/gi,'_')}`;
+      const fmlId=`fm_${field.f.replace(/[^a-z0-9]/gi,'_')}`;
       html+=`<div class="mr">
         <div class="ml ${isMand?'req':''}">${field.label}${field.hint?` <span style="font-size:10px;color:var(--text3)">· ${field.hint}</span>`:''}
         </div>
         <div class="ma" style="margin-top:8px;">→</div>
         <div class="mr-sel-wrap">
-          <select id="${selId}" onchange="onMap('${field.f}',this,'${inpId}')">${opts}</select>
+          <select id="${selId}" onchange="onMap('${field.f}',this,'${inpId}','${fmlId}',${isSKU})">${opts}</select>
           <input type="text" id="${inpId}" class="cv-inp hidden" placeholder="Enter hardcoded value…" oninput="onCustomVal('${field.f}',this)"/>
+          <div id="${fmlId}" class="hidden"></div>
         </div>
-        ${cv}
+        ${cvSpan}
       </div>`;
       if(ai!==-1){S.mapping[field.f]=ai;}
     });
@@ -414,6 +505,60 @@ function buildMapper(){
   });
 }
 
+function onMap(field,sel,inpId,fmlId,isSKU){
+  const v=sel.value;
+  const isCustom=v==='__custom__';
+  const isFormula=v==='__formula__';
+  const isMapped=v!==''&&!isCustom&&!isFormula;
+
+  sel.classList.toggle('mapped',isMapped);
+  sel.classList.toggle('custom',isCustom||isFormula);
+
+  // Show/hide custom value input
+  const inp=document.getElementById(inpId);
+  if(inp)inp.classList.toggle('hidden',!isCustom);
+
+  // Show/hide formula builder
+  const fmlDiv=document.getElementById(fmlId);
+  if(fmlDiv){
+    if(isFormula){
+      fmlDiv.classList.remove('hidden');
+      fmlDiv.innerHTML=formulaWrap(field,isSKU);
+      // restore previous state if any
+      if(S.formulaCfg[field]){
+        const fid=field.replace(/[^a-z0-9]/gi,'_');
+        const fb=document.getElementById('fb_'+fid);
+        if(fb){
+          if(S.formulaCfg[field].f1!=='')fb.querySelector('.fb-f1').value=S.formulaCfg[field].f1;
+          if(S.formulaCfg[field].f2!=='')fb.querySelector('.fb-f2').value=S.formulaCfg[field].f2;
+        }
+        updateFormulaPreview(field,isSKU);
+      }
+    } else {
+      fmlDiv.classList.add('hidden');
+      fmlDiv.innerHTML='';
+    }
+  }
+
+  if(isCustom){
+    S.mapping[field]='__custom__';
+    delete S.formulaCfg[field];
+  } else if(isFormula){
+    S.mapping[field]='__formula__';
+    if(!S.formulaCfg[field])S.formulaCfg[field]={f1:'',sep:'',f2:''};
+  } else {
+    S.mapping[field]=isMapped?parseInt(v):null;
+    delete S.formulaCfg[field];
+    if(inp){inp.value='';delete S.customVals[field];}
+  }
+}
+
+function onCustomVal(field,inp){
+  S.customVals[field]=inp.value;
+}
+
+// ─── Channel tab ─────────────────────────────────────────────────────────────
+
 function buildChannelTab(){
   const el=document.getElementById('tab-channels');
   const opts=['<option value="-1">— not in file —</option>',...S.raw.headers.map((h,i)=>`<option value="${i}">${h}</option>`)].join('');
@@ -426,60 +571,39 @@ function buildChannelTab(){
       if(kws.some(k=>hn.includes(norm(k)))){
         const n=S.raw.rows.filter(r=>r[idx]&&String(r[idx]).trim()).length;
         const p=Math.round(n/S.raw.rows.length*100);
-        html+=`<div class="mr" style="grid-template-columns:130px 28px 1fr 88px;" data-ch="${ch}" data-col="${idx}">
+        html+=`<div class="mr" style="grid-template-columns:130px 28px 1fr 88px;" data-ch="${ch}">
           <div class="ml" style="border-color:var(--accent);color:var(--accent2);">${ch}</div>
           <div class="ma">→</div>
-          <select class="mapped" onchange="updateChCol(this)" data-ch="${ch}"><option value="${idx}" selected>${h}</option>${opts}</select>
+          <select class="mapped" data-ch="${ch}"><option value="${idx}" selected>${h}</option>${opts}</select>
           <span class="cv g">${p}% filled</span>
         </div>`;
         detectedAny=true;break;
       }
     }
   });
-  if(!detectedAny)html+=`<div class="al al-w">No marketplace ID columns detected automatically. Use the rows below to add them manually.</div>`;
+  if(!detectedAny)html+=`<div class="al al-w" id="ch-no-detect">No marketplace ID columns detected automatically. Use the button below to add them manually.</div>`;
   html+=`<div id="ch-extra-rows"></div>
   <button class="btn bg" style="margin-top:10px;font-size:12px;" onclick="addChRow()">+ Add channel column manually</button>`;
   el.innerHTML=html;
 }
 
 function addChRow(){
+  // Ensure channel tab has been built (user may not have visited it)
+  const extraRows=document.getElementById('ch-extra-rows');
+  if(!extraRows){buildChannelTab();}
   const opts=['<option value="-1">— not in file —</option>',...S.raw.headers.map((h,i)=>`<option value="${i}">${h}</option>`)].join('');
   const chOpts=['Amazon','Flipkart','Myntra','Meesho','Ajio','Nykaa','Shopify','Other'].map(c=>`<option>${c}</option>`).join('');
   const id='cr_'+Date.now();
   const div=document.createElement('div');
-  div.className='mr';div.id=id;div.style.gridTemplateColumns='130px 28px 1fr 80px';
-  div.innerHTML=`<select style="border-color:var(--accent);color:var(--accent2);">${chOpts}</select>
+  div.className='mr';div.id=id;div.style.cssText='grid-template-columns:130px 28px 1fr 80px;margin-top:8px;';
+  div.innerHTML=`<select class="ch-name-sel" style="border-color:var(--accent);color:var(--accent2);">${chOpts}</select>
     <div class="ma">→</div>
-    <select>${opts}</select>
-    <button class="btn bg" style="padding:5px 10px;font-size:11px;" onclick="document.getElementById('${id}').remove()">✕</button>`;
+    <select class="ch-col-sel">${opts}</select>
+    <button class="btn bg" style="padding:5px 10px;font-size:11px;" onclick="this.closest('.mr').remove()">✕</button>`;
   document.getElementById('ch-extra-rows').appendChild(div);
-}
-
-function updateChCol(){}
-
-function onMap(field,sel,inpId){
-  const isCustom=sel.value==='__custom__';
-  const isMapped=sel.value!==''&&!isCustom;
-  sel.classList.toggle('mapped',isMapped);
-  sel.classList.toggle('custom',isCustom);
-  const inp=document.getElementById(inpId);
-  if(inp){
-    inp.classList.toggle('hidden',!isCustom);
-    if(!isCustom)inp.value='';
-  }
-  if(isCustom){
-    S.mapping[field]='__custom__';
-    S.customVals=S.customVals||{};
-    S.customVals[field]='';
-  } else {
-    S.mapping[field]=isMapped?parseInt(sel.value):null;
-    if(S.customVals)delete S.customVals[field];
-  }
-}
-
-function onCustomVal(field,inp){
-  S.customVals=S.customVals||{};
-  S.customVals[field]=inp.value;
+  // Hide the "no detect" warning once user adds a row
+  const nd=document.getElementById('ch-no-detect');
+  if(nd)nd.style.display='none';
 }
 
 function swTab(name,btn){
@@ -487,29 +611,37 @@ function swTab(name,btn){
   btn.classList.add('on');
   ['mandatory','identity','pricing','logistics','channels'].forEach(g=>
     document.getElementById('tab-'+g).classList.toggle('hidden',g!==name));
+  // Build channel tab on first visit if not yet built
+  if(name==='channels'&&!document.getElementById('ch-extra-rows'))buildChannelTab();
 }
 
 function collectChCols(){
   S.chCols=[];
-  // Auto-detected rows (have data-ch attribute on the .mr div)
-  document.querySelectorAll('#tab-channels [data-ch]').forEach(row=>{
+  // Auto-detected rows — .mr divs with data-ch on them (inside #tab-channels)
+  document.querySelectorAll('#tab-channels .mr[data-ch]').forEach(row=>{
     const ch=row.dataset.ch;
     const sel=row.querySelector('select');
+    if(!sel)return;
     const idx=parseInt(sel.value);
     if(!isNaN(idx)&&idx>=0)S.chCols.push({channel:ch,colIdx:idx,colName:S.raw.headers[idx]});
   });
   // Manually added rows (inside #ch-extra-rows)
-  document.querySelectorAll('#ch-extra-rows .mr').forEach(row=>{
-    const sels=row.querySelectorAll('select');
-    if(sels.length<2)return;
-    const ch=sels[0].value;           // channel name from first select
-    const idx=parseInt(sels[1].value);// column index from second select
-    if(ch&&!isNaN(idx)&&idx>=0)S.chCols.push({channel:ch,colIdx:idx,colName:S.raw.headers[idx]});
-  });
+  const extra=document.getElementById('ch-extra-rows');
+  if(extra){
+    extra.querySelectorAll('.mr').forEach(row=>{
+      const nameSel=row.querySelector('.ch-name-sel');
+      const colSel=row.querySelector('.ch-col-sel');
+      if(!nameSel||!colSel)return;
+      const ch=nameSel.value;
+      const idx=parseInt(colSel.value);
+      if(ch&&!isNaN(idx)&&idx>=0)S.chCols.push({channel:ch,colIdx:idx,colName:S.raw.headers[idx]});
+    });
+  }
 }
 
+// ─── Defaults & channel details ───────────────────────────────────────────────
+
 function buildDefs(){
-  collectChCols();
   DEFS_CFG.forEach(d=>{if(!(d.f in S.defaults))S.defaults[d.f]=d.val;});
   const body=document.getElementById('def-body');
   body.innerHTML=DEFS_CFG.map(d=>`
@@ -522,7 +654,8 @@ function buildDefs(){
 function buildChDet(){
   const body=document.getElementById('ch-det-body');
   if(S.chCols.length===0){
-    body.innerHTML='<div class="al al-w">No channel ID columns mapped. Only Item Master will be generated. Go back to the Channel IDs tab to add them.</div>';
+    body.innerHTML=`<div class="al al-w">⚠ No channel ID columns mapped — only Item Master will be generated.
+      <br><br>To add channels: go back → <strong>Map columns</strong> → <strong>Channel IDs</strong> tab → click <em>"+ Add channel column manually"</em> or check that your file has columns like ASIN / Myntra SKU ID / FSN.</div>`;
     return;
   }
   body.innerHTML=S.chCols.map(cfg=>{
@@ -538,17 +671,28 @@ function buildChDet(){
   }).join('');
 }
 
+// ─── Value resolution ─────────────────────────────────────────────────────────
+
 function getV(row,f){
   const idx=S.mapping[f];
-  if(idx==='__custom__'){
-    return(S.customVals&&S.customVals[f])||'';
+  if(idx==='__custom__') return S.customVals[f]||'';
+  if(idx==='__formula__'){
+    const cfg=S.formulaCfg[f]||{};
+    const v1=cfg.f1!==''&&cfg.f1!==undefined?String(row[cfg.f1]||'').trim():'';
+    const v2=cfg.f2!==''&&cfg.f2!==undefined?String(row[cfg.f2]||'').trim():'';
+    const sep=cfg.sep||'';
+    let result=v1+(v2?sep+v2:'');
+    // For SKU field, strip invalid chars
+    if(f==='Product Code*')result=result.replace(SKU_SPECIAL,'');
+    return result;
   }
   if(idx!==null&&idx!==undefined&&idx>=0)return String(row[idx]??'').trim();
   return'';
 }
 
+// ─── Generate ─────────────────────────────────────────────────────────────────
+
 function generate(){
-  // Build IM
   const imRows=S.raw.rows.map(row=>{
     return IM_COLS.map(col=>{
       const fromSeller=getV(row,col);
@@ -566,7 +710,6 @@ function generate(){
   });
   S.imOut={headers:IM_COLS,rows:imRows};
 
-  // Build CIT
   if(S.chCols.length===0){S.citOut=null;}
   else{
     const citH=['Channel Name*','Channel Product Id*','Seller SKU Code*','Uniware SKU Code','Live','Disabled','Currency Code'];
@@ -576,7 +719,6 @@ function generate(){
       S.chCols.forEach(cfg=>{
         let chId=String(row[cfg.colIdx]??'').trim();
         if(!chId)return;
-        // Clean up float-formatted IDs like 122877076.0
         if(/^\d+\.0$/.test(chId))chId=chId.slice(0,-2);
         citRows.push([cfg.channel,chId,uwSKU,uwSKU,'true','false','INR']);
       });
@@ -586,6 +728,8 @@ function generate(){
 
   renderS4();toStep(4);
 }
+
+// ─── Render step 4 ────────────────────────────────────────────────────────────
 
 function renderS4(){
   const im=S.imOut,cit=S.citOut;
@@ -604,15 +748,16 @@ function renderS4(){
     <div class="stat"><div class="stn" style="color:var(--green)">${cit?cit.rows.length:0}</div><div class="stl">Channel rows</div></div>
     <div class="stat" style="grid-column:span 2;"><div class="stn" style="font-size:12px;color:var(--text2);font-weight:400;margin-top:6px;">${chSummary}</div><div class="stl">By channel</div></div>`;
 
-  // IM preview
   const PC=['Category Code*','Product Code*','Name*','color','size','ean','MRP','Base Price','GST Tax Type Code'];
   const PI=PC.map(c=>im.headers.indexOf(c)).filter(i=>i!==-1);
   document.getElementById('im-meta').textContent=`${im.rows.length} rows · ${im.headers.length} columns · green = from seller data · amber = auto-filled default`;
   document.getElementById('im-tbl').innerHTML=
     `<thead><tr>${PI.map(i=>`<th class="${im.headers[i].includes('*')?'req':''}">${im.headers[i]}</th>`).join('')}</tr></thead>
     <tbody>${im.rows.slice(0,8).map(row=>`<tr>${PI.map(i=>{
-      const v=row[i];const mapped=S.mapping[im.headers[i]]>=0;
-      return`<td class="${!v?'ce':mapped?'cm':'cd2'}">${v||'—'}</td>`;
+      const v=row[i];
+      const midx=S.mapping[im.headers[i]];
+      const isMapped=midx!==null&&midx!==undefined&&(typeof midx==='number'?midx>=0:true);
+      return`<td class="${!v?'ce':isMapped?'cm':'cd2'}">${v||'—'}</td>`;
     }).join('')}</tr>`).join('')}</tbody>`;
 
   if(!noCit){
@@ -621,7 +766,7 @@ function renderS4(){
     const noSKU=cit.rows.filter(r=>!r[2]).length;
     document.getElementById('cit-als').innerHTML=noSKU>0
       ?`<div class="al al-w">⚠ ${noSKU} rows missing Seller SKU — check the Product Code mapping.</div>`
-      :`<div class="al al-ok" style="margin-bottom:12px;">✓ Seller SKU = Uniware SKU on all rows. Since marketplace IDs are in the same seller file, SKU codes are identical — no cross-file matching needed.</div>`;
+      :`<div class="al al-ok" style="margin-bottom:12px;">✓ Seller SKU = Uniware SKU on all rows.</div>`;
     document.getElementById('cit-tbl').innerHTML=
       `<thead><tr>${cit.headers.map(h=>`<th class="${h.includes('*')?'req':''}">${h}</th>`).join('')}<th>—</th></tr></thead>
       <tbody>${cit.rows.slice(0,10).map(r=>`<tr>
