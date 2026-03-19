@@ -51,8 +51,11 @@ select,input[type=text]{font-size:12px;font-family:var(--mono);color:var(--text)
 select:focus,input[type=text]:focus{border-color:var(--accent);}
 select option{background:#1e1e23;color:var(--text);}
 select.mapped{border-color:var(--green);color:var(--green);}
+select.custom{border-color:var(--amber);color:var(--amber);}
 input.dv{color:var(--amber);background:rgba(253,203,110,0.05);border-color:rgba(253,203,110,0.3);}
-.mr{display:grid;grid-template-columns:210px 28px 1fr 88px;gap:8px;align-items:center;margin-bottom:7px;}
+input.cv-inp{color:var(--amber);background:rgba(253,203,110,0.05);border-color:rgba(253,203,110,0.4);font-size:12px;font-family:var(--mono);margin-top:4px;}
+.mr{display:grid;grid-template-columns:210px 28px 1fr 88px;gap:8px;align-items:start;margin-bottom:7px;}
+.mr-sel-wrap{display:flex;flex-direction:column;gap:0;}
 .ml{font-size:12px;font-family:var(--mono);color:var(--text2);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .ml.req{border-color:var(--accent);color:var(--accent2);}
 .ma{text-align:center;color:var(--text3);font-size:12px;}
@@ -367,7 +370,11 @@ function toStep2(){buildMapper();toStep(2);}
 function toStep3(){buildDefs();buildChDet();toStep(3);}
 
 function buildMapper(){
-  const opts=['<option value="">— skip —</option>',...S.raw.headers.map((h,i)=>`<option value="${i}">${h}</option>`)].join('');
+  const opts=[
+    '<option value="">— skip —</option>',
+    '<option value="__custom__">✏ Enter custom value…</option>',
+    ...S.raw.headers.map((h,i)=>`<option value="${i}">${h}</option>`)
+  ].join('');
 
   Object.entries(SCHEMA).forEach(([group,fields])=>{
     const el=document.getElementById('tab-'+group);
@@ -383,11 +390,15 @@ function buildMapper(){
         cv=`<span class="cv ${p>=80?'g':'a'}">${p}% filled</span>`;
       }
       const selId=`mp_${field.f.replace(/[^a-z0-9]/gi,'_')}`;
+      const inpId=`cv_${field.f.replace(/[^a-z0-9]/gi,'_')}`;
       html+=`<div class="mr">
         <div class="ml ${isMand?'req':''}">${field.label}${field.hint?` <span style="font-size:10px;color:var(--text3)">· ${field.hint}</span>`:''}
         </div>
-        <div class="ma">→</div>
-        <select id="${selId}" onchange="onMap('${field.f}',this)">${opts}</select>
+        <div class="ma" style="margin-top:8px;">→</div>
+        <div class="mr-sel-wrap">
+          <select id="${selId}" onchange="onMap('${field.f}',this,'${inpId}')">${opts}</select>
+          <input type="text" id="${inpId}" class="cv-inp hidden" placeholder="Enter hardcoded value…" oninput="onCustomVal('${field.f}',this)"/>
+        </div>
         ${cv}
       </div>`;
       if(ai!==-1){S.mapping[field.f]=ai;}
@@ -446,9 +457,29 @@ function addChRow(){
 
 function updateChCol(){}
 
-function onMap(field,sel){
-  sel.classList.toggle('mapped',sel.value!=='');
-  S.mapping[field]=sel.value!==''?parseInt(sel.value):null;
+function onMap(field,sel,inpId){
+  const isCustom=sel.value==='__custom__';
+  const isMapped=sel.value!==''&&!isCustom;
+  sel.classList.toggle('mapped',isMapped);
+  sel.classList.toggle('custom',isCustom);
+  const inp=document.getElementById(inpId);
+  if(inp){
+    inp.classList.toggle('hidden',!isCustom);
+    if(!isCustom)inp.value='';
+  }
+  if(isCustom){
+    S.mapping[field]='__custom__';
+    S.customVals=S.customVals||{};
+    S.customVals[field]='';
+  } else {
+    S.mapping[field]=isMapped?parseInt(sel.value):null;
+    if(S.customVals)delete S.customVals[field];
+  }
+}
+
+function onCustomVal(field,inp){
+  S.customVals=S.customVals||{};
+  S.customVals[field]=inp.value;
 }
 
 function swTab(name,btn){
@@ -460,20 +491,20 @@ function swTab(name,btn){
 
 function collectChCols(){
   S.chCols=[];
-  // Auto-detected rows
+  // Auto-detected rows (have data-ch attribute on the .mr div)
   document.querySelectorAll('#tab-channels [data-ch]').forEach(row=>{
     const ch=row.dataset.ch;
     const sel=row.querySelector('select');
     const idx=parseInt(sel.value);
-    if(idx>=0)S.chCols.push({channel:ch,colIdx:idx,colName:S.raw.headers[idx]});
+    if(!isNaN(idx)&&idx>=0)S.chCols.push({channel:ch,colIdx:idx,colName:S.raw.headers[idx]});
   });
-  // Manually added rows
+  // Manually added rows (inside #ch-extra-rows)
   document.querySelectorAll('#ch-extra-rows .mr').forEach(row=>{
     const sels=row.querySelectorAll('select');
     if(sels.length<2)return;
-    const ch=sels[0].value;
-    const idx=parseInt(sels[1].value);
-    if(idx>=0)S.chCols.push({channel:ch,colIdx:idx,colName:S.raw.headers[idx]});
+    const ch=sels[0].value;           // channel name from first select
+    const idx=parseInt(sels[1].value);// column index from second select
+    if(ch&&!isNaN(idx)&&idx>=0)S.chCols.push({channel:ch,colIdx:idx,colName:S.raw.headers[idx]});
   });
 }
 
@@ -509,6 +540,9 @@ function buildChDet(){
 
 function getV(row,f){
   const idx=S.mapping[f];
+  if(idx==='__custom__'){
+    return(S.customVals&&S.customVals[f])||'';
+  }
   if(idx!==null&&idx!==undefined&&idx>=0)return String(row[idx]??'').trim();
   return'';
 }
@@ -535,11 +569,10 @@ function generate(){
   // Build CIT
   if(S.chCols.length===0){S.citOut=null;}
   else{
-    const skuIdx=S.mapping['Product Code*'];
     const citH=['Channel Name*','Channel Product Id*','Seller SKU Code*','Uniware SKU Code','Live','Disabled','Currency Code'];
     const citRows=[];
     S.raw.rows.forEach(row=>{
-      const uwSKU=skuIdx>=0?String(row[skuIdx]??'').trim():'';
+      const uwSKU=getV(row,'Product Code*');
       S.chCols.forEach(cfg=>{
         let chId=String(row[cfg.colIdx]??'').trim();
         if(!chId)return;
