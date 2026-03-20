@@ -1,0 +1,13 @@
+{
+  "headers": [
+    {
+      "source": "/api/config",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "same-origin"
+        }
+      ]
+    }
+  ]
+}
