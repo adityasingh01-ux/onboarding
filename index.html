@@ -963,13 +963,17 @@ function signInGoogle(){
   auth.signInWithPopup(provider)
     .then(result => { setAuthLoading(false); })
     .catch(err => {
-      console.warn('Popup failed (' + err.code + '), trying redirect…');
-      if(['auth/popup-blocked','auth/popup-closed-by-user',
-          'auth/cancelled-popup-request','auth/operation-not-supported-in-this-environment',
-          'auth/unauthorized-domain'].includes(err.code)){
+      console.warn('Popup failed:', err.code, err.message);
+      setAuthLoading(false); // always unstick the button first
+      if(err.code === 'auth/unauthorized-domain'){
+        showAuthError({message: 'Domain not authorised — add ' + location.hostname + ' in Firebase Auth → Authorized domains'});
+      } else if(err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request'){
+        // User closed popup themselves — just reset, no error message needed
+      } else if(err.code === 'auth/popup-blocked' || err.code === 'auth/operation-not-supported-in-this-environment'){
+        // Popup blocked — fall back to redirect
+        setAuthLoading(true);
         auth.signInWithRedirect(provider);
       } else {
-        setAuthLoading(false);
         showAuthError(err);
       }
     });
