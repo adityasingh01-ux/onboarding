@@ -240,10 +240,10 @@ td.ci{color:var(--accent2);}
     <div class="ct">📂 Upload seller files</div>
     <div class="cd">Upload up to 5 seller files. Tag each file with its type — the tool will merge and process them accordingly.</div>
     <div id="file-slots"></div>
-    <div class="add-file-btn" id="add-file-btn" onclick="triggerFileAdd()">
-      <input type="file" id="add-file-input" accept=".csv,.xlsx,.xls" onchange="onAddFile(event)" style="z-index:2;"/>
-      + Add file <span style="color:var(--text3)" id="file-count-hint">(up to 5)</span>
-    </div>
+    <label class="add-file-btn" id="add-file-btn" for="add-file-input">
+      <input type="file" id="add-file-input" accept=".csv,.xlsx,.xls" multiple onchange="onAddFile(event)" style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;"/>
+      + Add files <span style="color:var(--text3)" id="file-count-hint">(up to 5)</span>
+    </label>
   </div>
   <div class="al al-i" style="margin-top:0;">
     💡 Tag each file correctly — <strong>Master SKUs (simple+bundle)</strong> is the most common. Bundle SKUs are auto-detected by child/component columns.
@@ -385,25 +385,27 @@ function renderFileSlots(){
   document.getElementById('btn1').disabled=!hasSkuFile;
 }
 
-function triggerFileAdd(){
-  document.getElementById('add-file-input').click();
-}
-
 function onAddFile(e){
-  const f=e.target.files[0];
-  if(!f)return;
-  if(S.files.length>=5){alert('Maximum 5 files allowed.');return;}
-  // Auto-detect type from filename
-  const nm=f.name.toLowerCase();
-  let type='simple_bundle';
-  if(nm.includes('channel')||nm.includes('cit'))type='channel';
-  else if(nm.includes('bundle'))type='bundle';
-  else if(nm.includes('simple'))type='simple';
-  const idx=S.files.length;
-  S.files.push({name:f.name,type,raw:null});
+  const files=Array.from(e.target.files);
+  if(!files.length)return;
+  const remaining=5-S.files.length;
+  if(remaining<=0){alert('Maximum 5 files allowed.');e.target.value='';return;}
+  const toAdd=files.slice(0,remaining);
+  if(files.length>remaining){
+    alert(`Only ${remaining} more file(s) can be added. First ${remaining} selected file(s) will be uploaded.`);
+  }
+  toAdd.forEach(f=>{
+    const nm=f.name.toLowerCase();
+    let type='simple_bundle';
+    if(nm.includes('channel')||nm.includes('cit'))type='channel';
+    else if(nm.includes('bundle'))type='bundle';
+    else if(nm.includes('simple'))type='simple';
+    const idx=S.files.length;
+    S.files.push({name:f.name,type,raw:null});
+    readFileIntoSlot(f,idx);
+  });
   renderFileSlots();
-  readFileIntoSlot(f,idx);
-  e.target.value=''; // reset so same file can be re-added
+  e.target.value=''; // reset so same files can be re-added if needed
 }
 
 function setFileType(idx,type){
