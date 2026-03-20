@@ -925,9 +925,7 @@ fetch('/api/config')
       '<span style="font-size:11px;font-family:var(--mono);color:var(--red)">Auth unavailable</span>';
   });
 
-function bootFirebase(){
-
-// ── Auth helpers ──────────────────────────────────────────
+// ── Auth helpers — global so onclick handlers can reach them ─
 function setAuthLoading(on){
   const btn = document.querySelector('.btn-google');
   if(!btn) return;
@@ -940,6 +938,48 @@ function setAuthLoading(on){
     btn.disabled = false;
   }
 }
+
+function showAuthError(err){
+  const bar = document.getElementById('auth-bar');
+  const msg = document.createElement('span');
+  msg.style.cssText='font-size:11px;font-family:var(--mono);color:var(--red);margin-right:12px;';
+  if(err.code === 'auth/unauthorized-domain'){
+    msg.textContent = 'Domain not authorised — add it in Firebase Auth → Authorized domains';
+  } else {
+    msg.textContent = 'Sign-in failed: ' + (err.message || err.code);
+  }
+  bar.querySelectorAll('.auth-err').forEach(e=>e.remove());
+  msg.className='auth-err';
+  bar.prepend(msg);
+  setTimeout(()=>msg.remove(), 8000);
+}
+
+function signInGoogle(){
+  if(!auth){ showAuthError({message:'Firebase not ready yet, please wait a moment'}); return; }
+  const provider = new firebase.auth.GoogleAuthProvider();
+  provider.addScope('email');
+  provider.addScope('profile');
+  setAuthLoading(true);
+  auth.signInWithPopup(provider)
+    .then(result => { setAuthLoading(false); })
+    .catch(err => {
+      console.warn('Popup failed (' + err.code + '), trying redirect…');
+      if(['auth/popup-blocked','auth/popup-closed-by-user',
+          'auth/cancelled-popup-request','auth/operation-not-supported-in-this-environment',
+          'auth/unauthorized-domain'].includes(err.code)){
+        auth.signInWithRedirect(provider);
+      } else {
+        setAuthLoading(false);
+        showAuthError(err);
+      }
+    });
+}
+
+function signOut(){
+  if(auth) auth.signOut();
+}
+
+function bootFirebase(){
 
 function onUserSignedIn(user){
   FB_USER = user;
@@ -956,8 +996,7 @@ function onUserSignedIn(user){
   refreshUserStats();
 }
 
-// ── Auth state ────────────────────────────────────────────
-// Handle redirect result first (for environments where popup is blocked)
+// Handle redirect result first
 auth.getRedirectResult().then(result => {
   if(result && result.user) onUserSignedIn(result.user);
 }).catch(e => {
@@ -975,48 +1014,6 @@ auth.onAuthStateChanged(user => {
   }
 });
 
-function signInGoogle(){
-  const provider = new firebase.auth.GoogleAuthProvider();
-  provider.addScope('email');
-  provider.addScope('profile');
-  setAuthLoading(true);
-
-  // Try popup first; fall back to redirect if blocked or on mobile
-  auth.signInWithPopup(provider)
-    .then(result => { onUserSignedIn(result.user); setAuthLoading(false); })
-    .catch(err => {
-      console.warn('Popup failed (' + err.code + '), trying redirect…');
-      // Codes that mean "popup was blocked / not supported"
-      if(['auth/popup-blocked','auth/popup-closed-by-user',
-          'auth/cancelled-popup-request','auth/operation-not-supported-in-this-environment',
-          'auth/unauthorized-domain'].includes(err.code)){
-        auth.signInWithRedirect(provider);
-      } else {
-        setAuthLoading(false);
-        showAuthError(err);
-      }
-    });
-}
-
-function showAuthError(err){
-  const bar = document.getElementById('auth-bar');
-  const msg = document.createElement('span');
-  msg.style.cssText='font-size:11px;font-family:var(--mono);color:var(--red);margin-right:12px;';
-  if(err.code === 'auth/unauthorized-domain'){
-    msg.textContent = 'Domain not authorised in Firebase — add it in Authentication → Authorized domains';
-  } else {
-    msg.textContent = 'Sign-in failed: ' + (err.message || err.code);
-  }
-  // Remove any previous error msg
-  bar.querySelectorAll('.auth-err').forEach(e=>e.remove());
-  msg.className='auth-err';
-  bar.prepend(msg);
-  setTimeout(()=>msg.remove(), 8000);
-}
-
-function signOut(){
-  auth.signOut();
-}
 } // end bootFirebase
 
 // ── Activity logging ──────────────────────────────────────
