@@ -111,6 +111,19 @@ td.ci{color:var(--accent2);}
 .formula-builder select,.formula-builder input{font-size:11px;padding:5px 8px;}
 .fb-sep{border-color:rgba(253,203,110,0.4)!important;color:var(--amber)!important;text-align:center;}
 .formula-preview{padding:4px 0;}
+/* Login wall */
+#login-wall{position:fixed;inset:0;z-index:300;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;text-align:center;padding:24px;}
+#login-wall.hidden{display:none!important;}
+.login-box{background:var(--surface);border:1px solid var(--border2);border-radius:16px;padding:40px 48px;max-width:420px;width:100%;}
+.login-box h2{font-size:22px;font-weight:600;margin-bottom:8px;}
+.login-box p{font-size:13px;color:var(--text2);margin-bottom:28px;line-height:1.6;}
+.login-logo{display:flex;align-items:center;gap:8px;justify-content:center;margin-bottom:24px;}
+/* Star rating required indicator */
+.star-required{font-size:11px;font-family:var(--mono);color:var(--red);margin-top:-12px;margin-bottom:10px;display:none;}
+.star-required.show{display:block;}
+/* Download+rate button */
+.btn-dlr{background:var(--green);color:#0f0f11;font-weight:600;}
+.btn-dlr:hover{background:#00d4a7;transform:translateY(-1px);}
 /* ── Auth & feedback styles ───────────────────────────── */
 #auth-bar{position:fixed;top:0;right:0;left:0;z-index:100;display:flex;align-items:center;justify-content:flex-end;padding:10px 24px;background:rgba(15,15,17,0.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);}
 .auth-user{display:flex;align-items:center;gap:10px;font-size:13px;}
@@ -140,6 +153,23 @@ td.ci{color:var(--accent2);}
 </style>
 </head>
 <body>
+<!-- Login wall — shown until user signs in -->
+<div id="login-wall">
+  <div class="login-box">
+    <div class="login-logo">
+      <span class="chip chip-p">Unicommerce</span>
+      <span class="chip chip-g">Onboarding Mapper v2</span>
+    </div>
+    <h2>Sign in to continue</h2>
+    <p>This tool is for authorised Unicommerce onboarding team members. Sign in with your Google account to access the mapper.</p>
+    <button class="btn-google" id="login-wall-btn" onclick="signInGoogle()" style="width:100%;justify-content:center;padding:12px 20px;font-size:13px;">
+      <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z"/></svg>
+      Sign in with Google
+    </button>
+    <div id="login-wall-err" style="font-size:11px;font-family:var(--mono);color:var(--red);margin-top:12px;min-height:16px;"></div>
+  </div>
+</div>
+
 <!-- Auth bar -->
 <div id="auth-bar">
   <div id="auth-signed-out">
@@ -246,7 +276,7 @@ td.ci{color:var(--accent2);}
     <div class="ot">📋 Item Master <span style="font-family:var(--mono);font-size:11px;color:var(--text3);font-weight:400">item_master_import.csv</span></div>
     <div class="om" id="im-meta"></div>
     <div class="tw"><table id="im-tbl"></table></div>
-    <div class="br"><button class="btn bgg" onclick="dl('im')">⬇ Download Item Master CSV</button></div>
+    <div class="br"><button class="btn bgg" onclick="dl('im')">⬇ Download Item Master CSV</button><button class="btn-dlr btn" onclick="dlAndRate('im')">⬇ Download &amp; Rate</button></div>
   </div>
 
   <div class="card" id="cit-card">
@@ -257,6 +287,7 @@ td.ci{color:var(--accent2);}
     <div class="br">
       <button class="btn bgg" onclick="dl('cit')">⬇ Download Channel Mapping CSV</button>
       <button class="btn bg" onclick="dl('both')">⬇ Download both</button>
+      <button class="btn-dlr btn" onclick="dlAndRate('both')">⬇ Download both &amp; Rate</button>
     </div>
   </div>
 
@@ -873,8 +904,8 @@ function logImport(filename, rows, cols){
 <!-- Feedback modal -->
 <div id="feedback-modal" class="modal-bg hidden">
   <div class="modal">
-    <h2>How was this session?</h2>
-    <p>Your feedback helps us improve the mapper for onboarding teams.</p>
+    <h2>Before you go — rate this session</h2>
+    <p>A rating is required to start over. Your feedback helps us improve the mapper.</p>
     <div class="stars" id="star-row">
       <span class="star" onclick="setStar(1)">★</span>
       <span class="star" onclick="setStar(2)">★</span>
@@ -882,10 +913,10 @@ function logImport(filename, rows, cols){
       <span class="star" onclick="setStar(4)">★</span>
       <span class="star" onclick="setStar(5)">★</span>
     </div>
-    <textarea id="fb-comment" placeholder="Any comments? (optional)"></textarea>
+    <div class="star-required" id="star-required-msg">⚠ Please select a star rating to continue</div>
+    <textarea id="fb-comment" placeholder="Any comments? (optional)" style="margin-top:8px;"></textarea>
     <div class="modal-btns">
       <button class="btn bp" onclick="submitFeedback()">Submit &amp; start over</button>
-      <button class="btn bg" onclick="skipFeedback()">Skip</button>
     </div>
   </div>
 </div>
@@ -960,6 +991,9 @@ function signInGoogle(){
   provider.addScope('email');
   provider.addScope('profile');
   setAuthLoading(true);
+  // Also update login wall button
+  const lwBtn = document.getElementById('login-wall-btn');
+  if(lwBtn){ lwBtn.disabled=true; lwBtn.innerHTML='<span style="font-size:13px;color:var(--text2)">Signing in…</span>'; }
   auth.signInWithPopup(provider)
     .then(result => { setAuthLoading(false); })
     .catch(err => {
@@ -987,6 +1021,8 @@ function bootFirebase(){
 
 function onUserSignedIn(user){
   FB_USER = user;
+  // Hide login wall, show app
+  document.getElementById('login-wall').classList.add('hidden');
   document.getElementById('auth-signed-out').classList.add('hidden');
   document.getElementById('auth-signed-in').classList.remove('hidden');
   document.getElementById('auth-avatar').src = user.photoURL || '';
@@ -1012,6 +1048,8 @@ auth.onAuthStateChanged(user => {
   if(user){
     onUserSignedIn(user);
   } else {
+    // Show login wall, block app
+    document.getElementById('login-wall').classList.remove('hidden');
     document.getElementById('auth-signed-out').classList.remove('hidden');
     document.getElementById('auth-signed-in').classList.add('hidden');
     document.getElementById('user-stat-bar').classList.add('hidden');
@@ -1050,40 +1088,68 @@ function refreshUserStats(){
 }
 
 // ── Feedback modal ────────────────────────────────────────
-function showFeedback(){
+let PENDING_DL_TYPE = null; // set when download+rate is triggered
+
+function showFeedback(dlType){
   SELECTED_STAR = 0;
+  PENDING_DL_TYPE = dlType || null;
   document.getElementById('fb-comment').value = '';
   document.querySelectorAll('.star').forEach(s => s.classList.remove('on'));
+  document.getElementById('star-required-msg').classList.remove('show');
+  // Update modal title based on context
+  const h2 = document.querySelector('#feedback-modal .modal h2');
+  const p  = document.querySelector('#feedback-modal .modal p');
+  if(dlType){
+    h2.textContent = 'Rate before downloading';
+    p.textContent  = 'Please rate this session — your files will download right after.';
+  } else {
+    h2.textContent = 'Before you go — rate this session';
+    p.textContent  = 'A rating is required to start over. Your feedback helps us improve the mapper.';
+  }
   document.getElementById('feedback-modal').classList.remove('hidden');
 }
 
 function setStar(n){
   SELECTED_STAR = n;
   document.querySelectorAll('.star').forEach((s,i) => s.classList.toggle('on', i < n));
+  document.getElementById('star-required-msg').classList.remove('show');
 }
 
 function submitFeedback(){
+  if(SELECTED_STAR === 0){
+    document.getElementById('star-required-msg').classList.add('show');
+    return; // block submission until rated
+  }
   const comment = document.getElementById('fb-comment').value.trim();
-  if(FB_USER && SELECTED_STAR > 0){
+  if(FB_USER){
     db.ref('feedback').push({
       uid:       FB_USER.uid,
       name:      FB_USER.displayName,
       stars:     SELECTED_STAR,
       comment,
       timestamp: Date.now(),
-      skus:      S.imOut ? S.imOut.rows.length : 0
+      skus:      S.imOut ? S.imOut.rows.length : 0,
+      context:   PENDING_DL_TYPE ? 'download' : 'startover'
     });
   }
-  closeFeedback();
-}
-
-function skipFeedback(){
-  closeFeedback();
+  // If triggered by download+rate, do the download then close without reload
+  if(PENDING_DL_TYPE){
+    dl(PENDING_DL_TYPE);
+    document.getElementById('feedback-modal').classList.add('hidden');
+    PENDING_DL_TYPE = null;
+  } else {
+    closeFeedback();
+  }
 }
 
 function closeFeedback(){
   document.getElementById('feedback-modal').classList.add('hidden');
   location.reload();
+}
+
+// Download + Rate — shows feedback modal first, downloads after rating
+function dlAndRate(type){
+  showFeedback(type);
 }
 </script>
 </body>
