@@ -111,6 +111,34 @@ td.ci{color:var(--accent2);}
 .formula-builder select,.formula-builder input{font-size:11px;padding:5px 8px;}
 .fb-sep{border-color:rgba(253,203,110,0.4)!important;color:var(--amber)!important;text-align:center;}
 .formula-preview{padding:4px 0;}
+/* ── Bundle & multi-upload styles ──────────────────────── */
+.file-slot{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;margin-bottom:10px;display:grid;grid-template-columns:1fr 200px 32px;gap:10px;align-items:center;}
+.file-slot.loaded{border-color:var(--green);}
+.file-slot-name{font-size:12px;font-family:var(--mono);color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.file-slot.loaded .file-slot-name{color:var(--green);}
+.file-type-sel{font-size:11px;font-family:var(--mono);}
+.file-rm{background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:0;line-height:1;transition:color .2s;}
+.file-rm:hover{color:var(--red);}
+.add-file-btn{border:1.5px dashed var(--border2);border-radius:var(--r);padding:14px;text-align:center;cursor:pointer;font-size:12px;font-family:var(--mono);color:var(--text3);background:none;width:100%;transition:all .2s;position:relative;}
+.add-file-btn:hover{border-color:var(--accent);color:var(--accent2);}
+.add-file-btn input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+/* Bundle tab */
+.bundle-row{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:10px;}
+.bundle-header{display:grid;grid-template-columns:1fr 1fr 120px 80px 32px;gap:8px;align-items:center;margin-bottom:10px;}
+.bundle-comp-header{display:grid;grid-template-columns:1fr 80px 100px 32px;gap:6px;align-items:center;font-size:10px;font-family:var(--mono);color:var(--text3);text-transform:uppercase;padding:0 2px;margin-bottom:4px;}
+.bundle-comp-row{display:grid;grid-template-columns:1fr 80px 100px 32px;gap:6px;align-items:center;margin-bottom:6px;}
+.bundle-comp-row input,.bundle-comp-row select{font-size:11px;padding:5px 8px;}
+.comp-sku-inp{font-family:var(--mono);}
+.comp-sku-inp.valid{border-color:var(--green)!important;color:var(--green)!important;}
+.comp-sku-inp.invalid{border-color:var(--red)!important;color:var(--red)!important;}
+.add-comp-btn{font-size:11px;font-family:var(--mono);color:var(--accent2);background:none;border:1px dashed var(--accent);border-radius:4px;padding:4px 10px;cursor:pointer;transition:all .2s;margin-top:4px;}
+.add-comp-btn:hover{background:var(--accent-dim);}
+.bundle-val-err{font-size:10px;font-family:var(--mono);color:var(--red);margin-top:4px;}
+/* Bundle col mapper */
+.col-pair{display:grid;grid-template-columns:24px 1fr 1fr 32px;gap:6px;align-items:center;margin-bottom:6px;font-size:11px;font-family:var(--mono);color:var(--text3);}
+/* Step 4 bundle card */
+#bundle-card{display:none;}
+
 /* Login wall */
 #login-wall{position:fixed;inset:0;z-index:300;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;text-align:center;padding:24px;}
 #login-wall.hidden{display:none!important;}
@@ -209,14 +237,16 @@ td.ci{color:var(--accent2);}
 <!-- STEP 1 -->
 <div id="s1">
   <div class="card">
-    <div class="ct">📂 Upload seller master data</div>
-    <div class="cd">Any format — seller's own Excel/CSV, ERP export. The tool reads your column headers and lets you map them. If the file contains marketplace IDs (ASIN, Myntra SKU ID, etc.), the Channel Mapping file will be auto-generated too.</div>
-    <div class="drop" id="dz" ondragover="dzO(event)" ondragleave="dzL()" ondrop="dzD(event)">
-      <input type="file" accept=".csv,.xlsx,.xls" onchange="onFile(event)"/>
-      <span class="di">⬆</span>
-      <div class="dt"><strong>Click to upload</strong> or drag and drop</div>
-      <div class="dh">CSV or XLSX · any column structure</div>
+    <div class="ct">📂 Upload seller files</div>
+    <div class="cd">Upload up to 5 seller files. Tag each file with its type — the tool will merge and process them accordingly.</div>
+    <div id="file-slots"></div>
+    <div class="add-file-btn" id="add-file-btn" onclick="triggerFileAdd()">
+      <input type="file" id="add-file-input" accept=".csv,.xlsx,.xls" onchange="onAddFile(event)" style="z-index:2;"/>
+      + Add file <span style="color:var(--text3)" id="file-count-hint">(up to 5)</span>
     </div>
+  </div>
+  <div class="al al-i" style="margin-top:0;">
+    💡 Tag each file correctly — <strong>Master SKUs (simple+bundle)</strong> is the most common. Bundle SKUs are auto-detected by child/component columns.
   </div>
   <div class="br">
     <button class="btn bp" id="btn1" onclick="toStep2()" disabled>Map columns →</button>
@@ -235,12 +265,14 @@ td.ci{color:var(--accent2);}
       <button class="tab" onclick="swTab('pricing',this)">Pricing</button>
       <button class="tab" onclick="swTab('logistics',this)">Logistics</button>
       <button class="tab" onclick="swTab('channels',this)">Channel IDs</button>
+      <button class="tab" onclick="swTab('bundles',this)">📦 Bundles</button>
     </div>
     <div id="tab-mandatory"></div>
     <div id="tab-identity" class="hidden"></div>
     <div id="tab-pricing" class="hidden"></div>
     <div id="tab-logistics" class="hidden"></div>
     <div id="tab-channels" class="hidden"></div>
+    <div id="tab-bundles" class="hidden"></div>
     <div class="br">
       <button class="btn bp" onclick="toStep3()">Review defaults →</button>
       <button class="btn bg" onclick="toStep(1)">← Back</button>
@@ -291,12 +323,150 @@ td.ci{color:var(--accent2);}
     </div>
   </div>
 
+  <div class="card" id="bundle-card">
+    <div class="ot">📦 Bundle Item Master <span style="font-family:var(--mono);font-size:11px;color:var(--text3);font-weight:400">item_master_bundle_import.csv</span></div>
+    <div class="om" id="bundle-meta"></div>
+    <div id="bundle-als"></div>
+    <div class="tw"><table id="bundle-tbl"></table></div>
+    <div class="br">
+      <button class="btn bgg" onclick="dl('bundle')">⬇ Download Bundle Master CSV</button>
+      <button class="btn-dlr btn" onclick="dlAndRate('bundle')">⬇ Download &amp; Rate</button>
+    </div>
+  </div>
   <div class="br"><button class="btn bg" onclick="showFeedback()">↩ Start over</button></div>
 </div>
 
 </div>
 <script>
-const S={raw:null,mapping:{},chCols:[],defaults:{},imOut:null,citOut:null,customVals:{},formulaCfg:{}};
+// ── State ─────────────────────────────────────────────────
+const S={
+  raw:null,           // primary file (first Master SKUs file)
+  mapping:{},
+  chCols:[],
+  defaults:{},
+  imOut:null,
+  citOut:null,
+  bundleOut:null,
+  customVals:{},
+  formulaCfg:{},
+  files:[],           // [{name, type, raw:{headers,rows}}] up to 5
+  bundles:[],         // manually defined bundles [{sku,name,cat,taxCalc,scanType,components:[{sku,qty,price}]}]
+  bundleColMap:{},    // column-based bundle mapping {childCols:[{skuCol,qtyCol}]}
+  bundleMode:null,    // 'col' | 'manual' | null
+};
+
+const FILE_TYPES=[
+  {v:'simple_bundle', l:'Master SKUs (simple + bundle)'},
+  {v:'simple',        l:'Master SKUs (simple only)'},
+  {v:'bundle',        l:'Master SKUs (bundle only)'},
+  {v:'channel',       l:'Channel mapping master'},
+  {v:'all',           l:'Master SKUs + Channel mapping'},
+];
+
+// ── File slot management ───────────────────────────────────
+function renderFileSlots(){
+  const container=document.getElementById('file-slots');
+  const hint=document.getElementById('file-count-hint');
+  const addBtn=document.getElementById('add-file-btn');
+  hint.textContent='('+S.files.length+'/5 uploaded)';
+  addBtn.style.display=S.files.length>=5?'none':'block';
+
+  container.innerHTML=S.files.map((f,i)=>`
+    <div class="file-slot ${f.raw?'loaded':''}">
+      <div class="file-slot-name">${f.raw?'✓ ':''}<strong>${f.name}</strong>${f.raw?' · '+f.raw.rows.length+' rows · '+f.raw.headers.length+' cols':' · loading…'}</div>
+      <select class="file-type-sel" onchange="setFileType(${i},this.value)">
+        ${FILE_TYPES.map(t=>`<option value="${t.v}" ${f.type===t.v?'selected':''}>${t.l}</option>`).join('')}
+      </select>
+      <button class="file-rm" onclick="removeFile(${i})" title="Remove">✕</button>
+    </div>`).join('');
+
+  // Enable next button if at least one file with SKU data loaded
+  const hasSkuFile=S.files.some(f=>f.raw&&['simple_bundle','simple','bundle','all'].includes(f.type));
+  document.getElementById('btn1').disabled=!hasSkuFile;
+}
+
+function triggerFileAdd(){
+  document.getElementById('add-file-input').click();
+}
+
+function onAddFile(e){
+  const f=e.target.files[0];
+  if(!f)return;
+  if(S.files.length>=5){alert('Maximum 5 files allowed.');return;}
+  // Auto-detect type from filename
+  const nm=f.name.toLowerCase();
+  let type='simple_bundle';
+  if(nm.includes('channel')||nm.includes('cit'))type='channel';
+  else if(nm.includes('bundle'))type='bundle';
+  else if(nm.includes('simple'))type='simple';
+  const idx=S.files.length;
+  S.files.push({name:f.name,type,raw:null});
+  renderFileSlots();
+  readFileIntoSlot(f,idx);
+  e.target.value=''; // reset so same file can be re-added
+}
+
+function setFileType(idx,type){
+  if(S.files[idx])S.files[idx].type=type;
+  rebuildPrimaryRaw();
+}
+
+function removeFile(idx){
+  S.files.splice(idx,1);
+  rebuildPrimaryRaw();
+  renderFileSlots();
+}
+
+function readFileIntoSlot(file,idx){
+  const ext=file.name.split('.').pop().toLowerCase();
+  if(ext==='xlsx'||ext==='xls'){
+    if(typeof XLSX==='undefined'){
+      const s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload=()=>parseXLSXIntoSlot(file,idx);
+      document.head.appendChild(s);
+    } else parseXLSXIntoSlot(file,idx);
+  } else {
+    const rd=new FileReader();
+    rd.onload=ev=>{
+      S.files[idx].raw=parseCSV(ev.target.result);
+      rebuildPrimaryRaw();
+      renderFileSlots();
+      logImport(file.name,S.files[idx].raw.rows.length,S.files[idx].raw.headers.length);
+    };
+    rd.readAsText(file);
+  }
+}
+
+function parseXLSXIntoSlot(file,idx){
+  const rd=new FileReader();
+  rd.onload=e=>{
+    const wb=XLSX.read(e.target.result,{type:'array'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const data=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+    if(data.length<2)return;
+    const headers=data[0].map(String);
+    const rows=data.slice(1).filter(r=>r.some(c=>c!=='')).map(r=>r.map(c=>{
+      const s=String(c??'');return s.startsWith('=')?'':s;
+    }));
+    S.files[idx].raw={headers,rows};
+    rebuildPrimaryRaw();
+    renderFileSlots();
+    logImport(file.name,rows.length,headers.length);
+  };
+  rd.readAsArrayBuffer(file);
+}
+
+function rebuildPrimaryRaw(){
+  // Primary raw = first file that has SKU data (for column mapping)
+  const skuFile=S.files.find(f=>f.raw&&['simple_bundle','simple','all'].includes(f.type))
+    ||S.files.find(f=>f.raw&&f.type==='bundle')
+    ||S.files.find(f=>f.raw);
+  S.raw=skuFile?skuFile.raw:null;
+}
+
+// Init file slots UI
+document.addEventListener('DOMContentLoaded',()=>renderFileSlots());
 
 const SCHEMA={
   mandatory:[
@@ -384,60 +554,29 @@ function toCSV(h,rows){
   return[h.map(e).join(','),...rows.map(r=>r.map(e).join(','))].join('\n');
 }
 
-function dzO(e){e.preventDefault();document.getElementById('dz').classList.add('over');}
-function dzL(){document.getElementById('dz').classList.remove('over');}
-function dzD(e){e.preventDefault();dzL();const f=e.dataTransfer.files[0];if(f)readFile(f);}
-function onFile(e){const f=e.target.files[0];if(f)readFile(f);}
-
-function readFile(file){
-  const ext=file.name.split('.').pop().toLowerCase();
-  if(ext==='xlsx'||ext==='xls'){
-    if(typeof XLSX==='undefined'){const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';s.onload=()=>parseXLSX(file);document.head.appendChild(s);}
-    else parseXLSX(file);
-  }else{const rd=new FileReader();rd.onload=e=>{S.raw=parseCSV(e.target.result);fileLoaded(file.name);};rd.readAsText(file);}
-}
-
-function parseXLSX(file){
-  const rd=new FileReader();
-  rd.onload=e=>{
-    const wb=XLSX.read(e.target.result,{type:'array'});
-    const ws=wb.Sheets[wb.SheetNames[0]];
-    const data=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
-    if(data.length<2)return;
-    const headers=data[0].map(String);
-    const rows=data.slice(1).filter(r=>r.some(c=>c!=='')).map(r=>r.map(c=>{
-      const s=String(c??'');
-      return s.startsWith('=')?'':s;
-    }));
-    S.raw={headers,rows};
-    fileLoaded(file.name);
-  };
-  rd.readAsArrayBuffer(file);
-}
-
-function fileLoaded(name){
-  const dz=document.getElementById('dz');
-  dz.classList.add('loaded');
-  dz.querySelector('.di').textContent='✓';
-  dz.querySelector('.dt').innerHTML=`<strong>${name}</strong> — ${S.raw.rows.length} rows · ${S.raw.headers.length} columns`;
-  dz.querySelector('.dh').textContent='Click to replace';
-  document.getElementById('btn1').disabled=false;
-  logImport(name, S.raw.rows.length, S.raw.headers.length);
-}
+// Legacy drag/drop removed — now using multi-file slot system
+function dzO(e){e.preventDefault();}
+function dzL(){}
+function dzD(e){e.preventDefault();}
+function onFile(e){}
+function fileLoaded(){}
 
 function loadSample(){
-  S.raw={
-    headers:["Style+Size","Style Code","Carter's SKU","Carter's GTIN","Myntra styleId","Myntra SKU ID","Amazon ASINs","Product Type","Size","Filter Color","Image URL"],
+  const sampleRaw={
+    headers:["Style+Size","Style Code","Carter's SKU","Carter's GTIN","Myntra styleId","Myntra SKU ID","Amazon ASINs","Product Type","Size","Filter Color","Image URL","Child SKU 1","Child Qty 1","Child SKU 2","Child Qty 2"],
     rows:[
-      ["1T28091012M","1T280910","12028091012","197233249914","38487053","122877076","B0FWCSP36V","Clothing Sets","12m","Green","https://drive.google.com/uc?export=view&id=1KxgX9ENe1YnbX6eVRAivSUuc4PiBjyxn"],
-      ["1T28091018M","1T280910","12028091018","197233249921","38487053","122877077","B0FWCNDGQD","Clothing Sets","18m","Green","https://drive.google.com/uc?export=view&id=1KxgX9ENe1YnbX6eVRAivSUuc4PiBjyxn"],
-      ["1T28091024M","1T280910","12028091024","197233249938","38487053","122877078","B0FWCS96PB","Clothing Sets","24m","Green","https://drive.google.com/uc?export=view&id=1KxgX9ENe1YnbX6eVRAivSUuc4PiBjyxn"],
-      ["1T2809103M","1T280910","12028091003","197233249945","38487053","122877073","B0FWCQ8RJ7","Clothing Sets","3m","Green","https://drive.google.com/uc?export=view&id=1KxgX9ENe1YnbX6eVRAivSUuc4PiBjyxn"],
-      ["1T2809106M","1T280910","12028091006","197233249952","38487053","122877074","B0FWCM57JQ","Clothing Sets","6m","Green","https://drive.google.com/uc?export=view&id=1KxgX9ENe1YnbX6eVRAivSUuc4PiBjyxn"],
-      ["BLK-JEANS-32","1T990020","12012345002","197233100002","38512002","","","Bottomwear","32","Black",""],
+      ["1T28091012M","1T280910","12028091012","197233249914","38487053","122877076","B0FWCSP36V","Clothing Sets","12m","Green","https://drive.google.com/uc?export=view&id=1KxgX9ENe1YnbX6eVRAivSUuc4PiBjyxn","","","",""],
+      ["1T28091018M","1T280910","12028091018","197233249921","38487053","122877077","B0FWCNDGQD","Clothing Sets","18m","Green","https://drive.google.com/uc?export=view&id=1KxgX9ENe1YnbX6eVRAivSUuc4PiBjyxn","","","",""],
+      ["1T28091024M","1T280910","12028091024","197233249938","38487053","122877078","B0FWCS96PB","Clothing Sets","24m","Green","https://drive.google.com/uc?export=view&id=1KxgX9ENe1YnbX6eVRAivSUuc4PiBjyxn","","","",""],
+      ["1T2809103M","1T280910","12028091003","197233249945","38487053","122877073","B0FWCQ8RJ7","Clothing Sets","3m","Green","https://drive.google.com/uc?export=view&id=1KxgX9ENe1YnbX6eVRAivSUuc4PiBjyxn","","","",""],
+      ["1T2809106M","1T280910","12028091006","197233249952","38487053","122877074","B0FWCM57JQ","Clothing Sets","6m","Green","https://drive.google.com/uc?export=view&id=1KxgX9ENe1YnbX6eVRAivSUuc4PiBjyxn","","","",""],
+      ["BLK-JEANS-32","1T990020","12012345002","197233100002","38512002","","","Bottomwear","32","Black","","","","",""],
+      ["COMBO-PACK","COMBO01","99099001","","","","","Clothing Sets","","","","12028091012","1","12028091018","2"],
     ]
   };
-  fileLoaded("carters_sample.xlsx");
+  S.files=[{name:'carters_sample.xlsx',type:'simple_bundle',raw:sampleRaw}];
+  S.raw=sampleRaw;
+  renderFileSlots();
 }
 
 function toStep(n){
@@ -712,13 +851,299 @@ function addChRow(){
   if(nd)nd.style.display='none';
 }
 
+// ── Bundle tab ────────────────────────────────────────────
+
+function buildBundleTab(){
+  const el=document.getElementById('tab-bundles');
+  // Get all simple SKUs from mapped simple files for validation
+  const simpleSKUs=getSimpleSKUSet();
+  const hasBundleFile=S.files.some(f=>f.raw&&f.type==='bundle');
+  const hasColData=S.files.some(f=>f.raw&&['simple_bundle','all'].includes(f.type));
+
+  let html=`<div class="slbl">Bundle SKU configuration</div>`;
+
+  // ── Column-based bundle detection ──
+  if(hasColData&&S.raw){
+    html+=`<div class="al al-i" style="margin-bottom:10px;">
+      💡 If your file has Child SKU / Child Qty columns, map them below. The tool will auto-detect bundle rows.
+      Otherwise, define bundles manually below.
+    </div>
+    <div id="bundle-col-section">
+      <div style="font-size:12px;font-family:var(--mono);color:var(--text2);margin-bottom:8px;">Map child columns (pairs of SKU + Qty)</div>
+      <div id="col-pairs"></div>
+      <button class="add-comp-btn" onclick="addColPair()" style="margin-bottom:14px;">+ Add child column pair</button>
+    </div>`;
+  }
+
+  // ── Manual bundle builder ──
+  html+=`<div style="font-size:12px;font-family:var(--mono);color:var(--text2);margin:12px 0 8px;">
+    Bundle SKU defaults &nbsp;
+    <span style="font-size:10px;color:var(--text3);">(applied to all bundles)</span>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+    <div>
+      <div style="font-size:10px;font-family:var(--mono);color:var(--text3);margin-bottom:4px;">TAX CALCULATION TYPE</div>
+      <select id="bundle-tax-type" style="font-size:12px;">
+        <option value="PRICE_OF_BUNDLE_SKU" selected>PRICE_OF_BUNDLE_SKU (default)</option>
+        <option value="PRICE_OF_COMPONENT_SKU">PRICE_OF_COMPONENT_SKU</option>
+      </select>
+    </div>
+    <div>
+      <div style="font-size:10px;font-family:var(--mono);color:var(--text3);margin-bottom:4px;">SCAN TYPE</div>
+      <select id="bundle-scan-type" style="font-size:12px;">
+        <option value="SIMPLE" selected>SIMPLE (scan individual items)</option>
+        <option value="BUNDLE">BUNDLE (scan bundle barcode)</option>
+      </select>
+    </div>
+  </div>
+  <div style="font-size:12px;font-family:var(--mono);color:var(--text2);margin-bottom:8px;">
+    Manually define bundle SKUs
+    <span style="font-size:10px;color:var(--text3);margin-left:6px;">— or they will be auto-detected from child columns above</span>
+  </div>
+  <div id="manual-bundles"></div>
+  <button class="btn bg" style="font-size:12px;margin-top:6px;" onclick="addManualBundle()">+ Add bundle SKU</button>`;
+
+  el.innerHTML=html;
+  // Render existing bundles
+  S.bundles.forEach((_,i)=>renderBundleRow(i));
+  // Render existing col pairs
+  (S.bundleColMap.pairs||[]).forEach((_,i)=>renderColPair(i));
+}
+
+function getSimpleSKUSet(){
+  const skus=new Set();
+  const skuIdx=S.mapping['Product Code*'];
+  S.files.forEach(f=>{
+    if(!f.raw||f.type==='channel')return;
+    f.raw.rows.forEach(row=>{
+      const v=skuIdx!==null&&skuIdx!==undefined?String(row[skuIdx]||'').trim():'';
+      if(v)skus.add(v);
+    });
+  });
+  return skus;
+}
+
+// ── Column pair mapping ──
+function addColPair(){
+  if(!S.bundleColMap.pairs)S.bundleColMap.pairs=[];
+  S.bundleColMap.pairs.push({skuCol:'',qtyCol:''});
+  renderColPair(S.bundleColMap.pairs.length-1);
+}
+
+function renderColPair(i){
+  const container=document.getElementById('col-pairs');
+  if(!container)return;
+  const pair=S.bundleColMap.pairs[i];
+  const opts=['<option value="">— select —</option>',...(S.raw?S.raw.headers:[]).map((h,j)=>`<option value="${j}" ${pair.skuCol===String(j)?'selected':''}>${h}</option>`)].join('');
+  // Remove existing row if any
+  const existing=document.getElementById('col-pair-'+i);
+  if(existing)existing.remove();
+  const div=document.createElement('div');
+  div.className='col-pair';div.id='col-pair-'+i;
+  div.innerHTML=`<span style="color:var(--text3);font-size:10px;">#${i+1}</span>
+    <select onchange="setColPair(${i},'skuCol',this.value)">${opts}</select>
+    <select onchange="setColPair(${i},'qtyCol',this.value)">${opts.replace('>— select —<','>— qty col —<')}</select>
+    <button class="file-rm" onclick="removeColPair(${i})">✕</button>`;
+  container.appendChild(div);
+}
+
+function setColPair(i,field,val){
+  if(!S.bundleColMap.pairs)S.bundleColMap.pairs=[];
+  if(!S.bundleColMap.pairs[i])S.bundleColMap.pairs[i]={skuCol:'',qtyCol:''};
+  S.bundleColMap.pairs[i][field]=val;
+}
+
+function removeColPair(i){
+  S.bundleColMap.pairs.splice(i,1);
+  document.getElementById('col-pairs').innerHTML='';
+  (S.bundleColMap.pairs||[]).forEach((_,j)=>renderColPair(j));
+}
+
+// ── Manual bundle rows ──
+function addManualBundle(){
+  S.bundles.push({sku:'',name:'',cat:'',components:[]});
+  renderBundleRow(S.bundles.length-1);
+}
+
+function renderBundleRow(i){
+  const container=document.getElementById('manual-bundles');
+  if(!container)return;
+  const b=S.bundles[i];
+  const existing=document.getElementById('bundle-row-'+i);
+  if(existing)existing.remove();
+  const div=document.createElement('div');
+  div.className='bundle-row';div.id='bundle-row-'+i;
+  div.innerHTML=`
+    <div class="bundle-header">
+      <input type="text" placeholder="Bundle SKU code*" value="${b.sku||''}" class="comp-sku-inp" style="font-family:var(--mono);font-size:12px;" oninput="setBundleProp(${i},'sku',this.value)"/>
+      <input type="text" placeholder="Bundle name*" value="${b.name||''}" style="font-size:12px;" oninput="setBundleProp(${i},'name',this.value)"/>
+      <input type="text" placeholder="Category (opt)" value="${b.cat||''}" style="font-size:11px;" oninput="setBundleProp(${i},'cat',this.value)"/>
+      <span style="font-size:10px;font-family:var(--mono);color:var(--text3);">components: ${b.components.length}</span>
+      <button class="file-rm" onclick="removeBundle(${i})">✕</button>
+    </div>
+    <div class="bundle-comp-header"><span>Component SKU*</span><span>Qty*</span><span>Price ratio</span><span></span></div>
+    <div id="bundle-comps-${i}"></div>
+    <button class="add-comp-btn" onclick="addComponent(${i})">+ Add component</button>
+    <div class="bundle-val-err" id="bundle-err-${i}"></div>`;
+  container.appendChild(div);
+  b.components.forEach((_,j)=>renderCompRow(i,j));
+}
+
+function setBundleProp(i,prop,val){
+  S.bundles[i][prop]=val;
+  // Validate SKU
+  if(prop==='sku'){
+    const inp=document.querySelector(`#bundle-row-${i} .comp-sku-inp`);
+    const clean=val.replace(/[^a-zA-Z0-9.\/_\-]/g,'');
+    const ok=clean===val&&val.length>=3&&val.length<=45;
+    if(inp){inp.classList.toggle('valid',ok&&val.length>0);inp.classList.toggle('invalid',!ok&&val.length>0);}
+  }
+}
+
+function removeBundle(i){
+  S.bundles.splice(i,1);
+  document.getElementById('manual-bundles').innerHTML='';
+  S.bundles.forEach((_,j)=>renderBundleRow(j));
+}
+
+function addComponent(bundleIdx){
+  S.bundles[bundleIdx].components.push({sku:'',qty:1,price:1});
+  renderCompRow(bundleIdx,S.bundles[bundleIdx].components.length-1);
+  // Update component count label
+  const span=document.querySelector(`#bundle-row-${bundleIdx} .bundle-header span`);
+  if(span)span.textContent='components: '+S.bundles[bundleIdx].components.length;
+}
+
+function renderCompRow(bi,ci){
+  const container=document.getElementById('bundle-comps-'+bi);
+  if(!container)return;
+  const comp=S.bundles[bi].components[ci];
+  const existing=document.getElementById(`comp-${bi}-${ci}`);
+  if(existing)existing.remove();
+  const div=document.createElement('div');
+  div.className='bundle-comp-row';div.id=`comp-${bi}-${ci}`;
+  div.innerHTML=`
+    <input type="text" class="comp-sku-inp" placeholder="SKU code" value="${comp.sku||''}"
+      oninput="setCompProp(${bi},${ci},'sku',this.value);validateCompSKU(this,this.value)"/>
+    <input type="number" min="1" value="${comp.qty||1}" style="font-size:11px;"
+      oninput="setCompProp(${bi},${ci},'qty',this.value)"/>
+    <input type="number" min="0" step="0.01" value="${comp.price||1}" style="font-size:11px;"
+      oninput="setCompProp(${bi},${ci},'price',this.value)"/>
+    <button class="file-rm" onclick="removeComp(${bi},${ci})">✕</button>`;
+  container.appendChild(div);
+}
+
+function setCompProp(bi,ci,prop,val){
+  S.bundles[bi].components[ci][prop]=prop==='sku'?val:Number(val);
+}
+
+function validateCompSKU(inp,val){
+  const simpleSKUs=getSimpleSKUSet();
+  inp.classList.toggle('valid',simpleSKUs.has(val));
+  inp.classList.toggle('invalid',val.length>0&&!simpleSKUs.has(val));
+}
+
+function removeComp(bi,ci){
+  S.bundles[bi].components.splice(ci,1);
+  document.getElementById('bundle-comps-'+bi).innerHTML='';
+  S.bundles[bi].components.forEach((_,j)=>renderCompRow(bi,j));
+}
+
+// ── Bundle generation ─────────────────────────────────────
+
+function generateBundles(){
+  const BUNDLE_COLS=['Category Code*','Product Code*','Name*','Description','ean','upc',
+    'color','brand','size','Image Url','Product Page URL','Tags',
+    'MRP','Base Price','Cost Price','Weight (gms)','Length (mm)','Width (mm)','height (mm)',
+    'TAT','Shelf Life','Type','Enabled','GST Tax Type Code','Sku Type','Min Order Size',
+    'Requires Customization','Fragile','Dangerous Good',
+    'Scan Type','Component Product Code','Component Quantity','Component Price',
+    'Tax Calculation Type'];
+
+  const taxType=document.getElementById('bundle-tax-type')?document.getElementById('bundle-tax-type').value:'PRICE_OF_BUNDLE_SKU';
+  const scanType=document.getElementById('bundle-scan-type')?document.getElementById('bundle-scan-type').value:'SIMPLE';
+  const rows=[];
+
+  // ── Source 1: column-mapped bundles from seller file ──
+  const pairs=(S.bundleColMap.pairs||[]).filter(p=>p.skuCol!==''&&p.qtyCol!=='');
+  if(pairs.length>0&&S.raw){
+    const skuIdx=S.mapping['Product Code*'];
+    // Group rows by bundle SKU (for multi-row format detection)
+    const bundleMap={};
+    S.raw.rows.forEach(row=>{
+      const rowSKU=skuIdx!==null&&skuIdx!==undefined?String(row[skuIdx]||'').trim():'';
+      pairs.forEach(p=>{
+        const childSku=String(row[p.skuCol]||'').trim();
+        const childQty=String(row[p.qtyCol]||'').trim();
+        if(!childSku)return;
+        if(!bundleMap[rowSKU])bundleMap[rowSKU]={row,components:[]};
+        bundleMap[rowSKU].components.push({sku:childSku,qty:parseInt(childQty)||1,price:1});
+      });
+    });
+    Object.entries(bundleMap).forEach(([bundleSKU,{row,components}])=>{
+      if(!bundleSKU||components.length===0)return;
+      components.forEach((comp,ci)=>{
+        const r=new Array(BUNDLE_COLS.length).fill('');
+        // Fill main fields only on first component row
+        if(ci===0){
+          BUNDLE_COLS.forEach((col,idx)=>{
+            const v=getV(row,col);
+            if(v)r[idx]=v;
+            else r[idx]=S.defaults[col]||S.defaults[col.replace('*','').trim()]||'';
+          });
+          r[BUNDLE_COLS.indexOf('Type')]='BUNDLE';
+          r[BUNDLE_COLS.indexOf('Scan Type')]=scanType;
+          r[BUNDLE_COLS.indexOf('Tax Calculation Type')]=taxType;
+        } else {
+          r[BUNDLE_COLS.indexOf('Product Code*')]=bundleSKU;
+          r[BUNDLE_COLS.indexOf('Name*')]=bundleMap[bundleSKU].row?getV(bundleMap[bundleSKU].row,'Name*')||bundleSKU:bundleSKU;
+        }
+        r[BUNDLE_COLS.indexOf('Component Product Code')]=comp.sku;
+        r[BUNDLE_COLS.indexOf('Component Quantity')]=comp.qty;
+        r[BUNDLE_COLS.indexOf('Component Price')]=comp.price;
+        rows.push(r);
+      });
+    });
+  }
+
+  // ── Source 2: manually defined bundles ──
+  S.bundles.forEach(b=>{
+    if(!b.sku||b.components.length===0)return;
+    b.components.forEach((comp,ci)=>{
+      const r=new Array(BUNDLE_COLS.length).fill('');
+      if(ci===0){
+        r[BUNDLE_COLS.indexOf('Category Code*')]=b.cat||S.defaults['Category Code*']||'APPAREL';
+        r[BUNDLE_COLS.indexOf('Product Code*')]=b.sku;
+        r[BUNDLE_COLS.indexOf('Name*')]=b.name||b.sku;
+        r[BUNDLE_COLS.indexOf('Type')]='BUNDLE';
+        r[BUNDLE_COLS.indexOf('Enabled')]='true';
+        r[BUNDLE_COLS.indexOf('GST Tax Type Code')]=S.defaults['GST Tax Type Code']||'GST5';
+        r[BUNDLE_COLS.indexOf('Sku Type')]='STANDARD';
+        r[BUNDLE_COLS.indexOf('Min Order Size')]='1';
+        r[BUNDLE_COLS.indexOf('Scan Type')]=scanType;
+        r[BUNDLE_COLS.indexOf('Tax Calculation Type')]=taxType;
+      } else {
+        r[BUNDLE_COLS.indexOf('Product Code*')]=b.sku;
+        r[BUNDLE_COLS.indexOf('Name*')]=b.name||b.sku;
+      }
+      r[BUNDLE_COLS.indexOf('Component Product Code')]=comp.sku;
+      r[BUNDLE_COLS.indexOf('Component Quantity')]=comp.qty;
+      r[BUNDLE_COLS.indexOf('Component Price')]=comp.price;
+      rows.push(r);
+    });
+  });
+
+  S.bundleOut=rows.length>0?{headers:BUNDLE_COLS,rows}:null;
+  return S.bundleOut;
+}
+
 function swTab(name,btn){
   document.querySelectorAll('.tabs .tab').forEach(t=>t.classList.remove('on'));
   btn.classList.add('on');
-  ['mandatory','identity','pricing','logistics','channels'].forEach(g=>
+  ['mandatory','identity','pricing','logistics','channels','bundles'].forEach(g=>
     document.getElementById('tab-'+g).classList.toggle('hidden',g!==name));
-  // Build channel tab on first visit if not yet built
   if(name==='channels'&&!document.getElementById('ch-extra-rows'))buildChannelTab();
+  if(name==='bundles')buildBundleTab();
 }
 
 function collectChCols(){
@@ -798,28 +1223,54 @@ function getV(row,f){
 // ─── Generate ─────────────────────────────────────────────────────────────────
 
 function generate(){
-  const imRows=S.raw.rows.map(row=>{
-    return IM_COLS.map(col=>{
-      const fromSeller=getV(row,col);
-      if(fromSeller)return fromSeller;
-      if(col==='Name*'){
-        const cat=getV(row,'Category Code*')||S.defaults['Category Code*']||'';
-        const color=getV(row,'color');
-        const sz=getV(row,'size');
-        const br=getV(row,'brand');
-        const sku=getV(row,'Product Code*');
-        return[br,cat,color,sz].filter(Boolean).join(' ')||sku||'';
-      }
-      return S.defaults[col]||S.defaults[col.replace('*','').trim()]||'';
-    });
+  // Collect all SKU rows from all relevant files
+  const allRows=[];
+  S.files.forEach(f=>{
+    if(!f.raw||f.type==='channel')return;
+    f.raw.rows.forEach(row=>allRows.push({row,fileType:f.type}));
   });
+
+  // Detect bundle rows: any row with a value in any child SKU column
+  const pairs=(S.bundleColMap.pairs||[]).filter(p=>p.skuCol!==''&&p.qtyCol!=='');
+  function isBundleRow(row){
+    if(pairs.length===0)return false;
+    return pairs.some(p=>String(row[p.skuCol]||'').trim()!=='');
+  }
+
+  // Build simple IM rows (exclude bundle rows when col mapping is set)
+  const imRows=allRows
+    .filter(({row,fileType})=>fileType!=='bundle'&&!isBundleRow(row))
+    .map(({row})=>{
+      return IM_COLS.map(col=>{
+        const fromSeller=getV(row,col);
+        if(fromSeller)return fromSeller;
+        if(col==='Name*'){
+          const cat=getV(row,'Category Code*')||S.defaults['Category Code*']||'';
+          const color=getV(row,'color');
+          const sz=getV(row,'size');
+          const br=getV(row,'brand');
+          const sku=getV(row,'Product Code*');
+          return[br,cat,color,sz].filter(Boolean).join(' ')||sku||'';
+        }
+        return S.defaults[col]||S.defaults[col.replace('*','').trim()]||'';
+      });
+    });
   S.imOut={headers:IM_COLS,rows:imRows};
+
+  // Generate bundle CSV
+  generateBundles();
 
   if(S.chCols.length===0){S.citOut=null;}
   else{
     const citH=['Channel Name*','Channel Product Id*','Seller SKU Code*','Uniware SKU Code','Live','Disabled','Currency Code'];
     const citRows=[];
-    S.raw.rows.forEach(row=>{
+    // Include rows from channel files and all-in-one files
+    const citSourceRows=[];
+    S.files.forEach(f=>{
+      if(f.raw&&['channel','all','simple_bundle','simple'].includes(f.type))
+        f.raw.rows.forEach(r=>citSourceRows.push(r));
+    });
+    citSourceRows.forEach(row=>{
       const uwSKU=getV(row,'Product Code*');
       S.chCols.forEach(cfg=>{
         let chId=String(row[cfg.colIdx]??'').trim();
@@ -840,9 +1291,12 @@ function renderS4(){
   const im=S.imOut,cit=S.citOut;
   const noCit=!cit||cit.rows.length===0;
 
-  document.getElementById('gen-al').textContent=noCit
-    ?`✓ Item Master ready — ${im.rows.length} SKUs. No channel IDs were mapped.`
-    :`✓ Files ready — ${im.rows.length} SKUs in Item Master, ${cit.rows.length} channel mapping rows.`;
+  const bundleCount=S.bundleOut?S.bundleOut.rows.length:0;
+  const bundleSkus=S.bundleOut?new Set(S.bundleOut.rows.map(r=>r[1])).size:0;
+  document.getElementById('gen-al').textContent=
+    `✓ Files ready — ${im.rows.length} simple SKUs`+
+    (bundleSkus>0?` · ${bundleSkus} bundle SKUs (${bundleCount} component rows)`:'')+ 
+    (noCit?'. No channel IDs mapped.':(` · ${cit.rows.length} channel mapping rows.`));
 
   const byChannel={};
   if(cit)cit.rows.forEach(r=>{byChannel[r[0]]=(byChannel[r[0]]||0)+1;});
@@ -864,6 +1318,33 @@ function renderS4(){
       const isMapped=midx!==null&&midx!==undefined&&(typeof midx==='number'?midx>=0:true);
       return`<td class="${!v?'ce':isMapped?'cm':'cd2'}">${v||'—'}</td>`;
     }).join('')}</tr>`).join('')}</tbody>`;
+
+  // Bundle card
+  const bundleCard=document.getElementById('bundle-card');
+  if(S.bundleOut&&S.bundleOut.rows.length>0){
+    bundleCard.style.display='block';
+    document.getElementById('bundle-meta').textContent=
+      `${S.bundleOut.rows.length} rows · ${bundleSkus} bundle SKUs · Tax: ${document.getElementById('bundle-tax-type')?document.getElementById('bundle-tax-type').value:'PRICE_OF_BUNDLE_SKU'}`;
+    // Validate components exist in simple file
+    const simpleSKUSet=new Set(im.rows.map(r=>r[1]).filter(Boolean));
+    const missingComps=S.bundleOut.rows.filter(r=>r[32]&&!simpleSKUSet.has(r[32])).map(r=>r[32]);
+    const uniqMissing=[...new Set(missingComps)];
+    document.getElementById('bundle-als').innerHTML=uniqMissing.length>0
+      ?`<div class="al al-w">⚠ ${uniqMissing.length} component SKU(s) not found in simple master: ${uniqMissing.slice(0,5).join(', ')}${uniqMissing.length>5?'…':''}</div>`
+      :`<div class="al al-ok" style="margin-bottom:10px;">✓ All component SKUs found in simple master.</div>`;
+    const BH=['Product Code*','Name*','Type','Scan Type','Component SKU','Qty','Price','Tax Calc Type'];
+    const BI=[1,2,21,31,32,33,34,35];
+    document.getElementById('bundle-tbl').innerHTML=
+      `<thead><tr>${BH.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
+      <tbody>${S.bundleOut.rows.slice(0,10).map(r=>`<tr>
+        <td class="cm">${r[1]||'—'}</td><td>${r[2]||'—'}</td>
+        <td class="cd2">${r[21]||'—'}</td><td>${r[31]||'—'}</td>
+        <td class="ci">${r[32]||'—'}</td><td>${r[33]||'—'}</td>
+        <td>${r[34]||'—'}</td><td class="cd2">${r[35]||'—'}</td>
+      </tr>`).join('')}</tbody>`;
+  } else {
+    bundleCard.style.display='none';
+  }
 
   if(!noCit){
     document.getElementById('cit-card').style.display='block';
@@ -887,12 +1368,14 @@ function renderS4(){
 
 function dl(type){
   const save=(content,name)=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([content],{type:'text/csv'}));a.download=name;a.click();};
-  if(type==='im'||type==='both')save(toCSV(S.imOut.headers,S.imOut.rows),'item_master_import.csv');
+  if(type==='im'||type==='both')save(toCSV(S.imOut.headers,S.imOut.rows),'item_master_simple_import.csv');
   if((type==='cit'||type==='both')&&S.citOut)save(toCSV(S.citOut.headers,S.citOut.rows),'channel_item_type_import.csv');
+  if((type==='bundle'||type==='both')&&S.bundleOut)save(toCSV(S.bundleOut.headers,S.bundleOut.rows),'item_master_bundle_import.csv');
   // Log activity to Firebase
   const skus=S.imOut?S.imOut.rows.length:0;
   const chRows=S.citOut?S.citOut.rows.length:0;
-  logActivity('export_'+type,{skus,chRows,type});
+  const bundleRows=S.bundleOut?S.bundleOut.rows.length:0;
+  logActivity('export_'+type,{skus,chRows,bundleRows,type});
 }
 
 // Log import when file is processed
