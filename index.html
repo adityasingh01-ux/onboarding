@@ -112,11 +112,15 @@ td.ci{color:var(--accent2);}
 .fb-sep{border-color:rgba(253,203,110,0.4)!important;color:var(--amber)!important;text-align:center;}
 .formula-preview{padding:4px 0;}
 /* ── Bundle & multi-upload styles ──────────────────────── */
-.file-slot{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;margin-bottom:10px;display:grid;grid-template-columns:1fr 200px 32px;gap:10px;align-items:center;}
+.file-slot{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;margin-bottom:10px;}
 .file-slot.loaded{border-color:var(--green);}
+.file-slot-top{display:grid;grid-template-columns:1fr 32px;gap:10px;align-items:center;margin-bottom:10px;}
 .file-slot-name{font-size:12px;font-family:var(--mono);color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .file-slot.loaded .file-slot-name{color:var(--green);}
-.file-type-sel{font-size:11px;font-family:var(--mono);}
+.file-type-wrap{border:1px solid var(--border2);border-radius:6px;padding:8px 12px;background:var(--surface);display:flex;flex-direction:column;gap:4px;}
+.file-type-label{font-size:10px;font-family:var(--mono);color:var(--text3);text-transform:uppercase;letter-spacing:.08em;}
+.file-type-sel{font-size:12px;font-family:var(--mono);border:none!important;background:transparent!important;padding:0!important;color:var(--accent2)!important;width:100%;cursor:pointer;}
+.file-type-sel:focus{outline:none;}
 .file-rm{background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:0;line-height:1;transition:color .2s;}
 .file-rm:hover{color:var(--red);}
 .add-file-btn{border:1.5px dashed var(--border2);border-radius:var(--r);padding:14px;text-align:center;cursor:pointer;font-size:12px;font-family:var(--mono);color:var(--text3);background:none;width:100%;transition:all .2s;position:relative;}
@@ -373,11 +377,16 @@ function renderFileSlots(){
 
   container.innerHTML=S.files.map((f,i)=>`
     <div class="file-slot ${f.raw?'loaded':''}">
-      <div class="file-slot-name">${f.raw?'✓ ':''}<strong>${f.name}</strong>${f.raw?' · '+f.raw.rows.length+' rows · '+f.raw.headers.length+' cols':' · loading…'}</div>
-      <select class="file-type-sel" onchange="setFileType(${i},this.value)">
-        ${FILE_TYPES.map(t=>`<option value="${t.v}" ${f.type===t.v?'selected':''}>${t.l}</option>`).join('')}
-      </select>
-      <button class="file-rm" onclick="removeFile(${i})" title="Remove">✕</button>
+      <div class="file-slot-top">
+        <div class="file-slot-name">${f.raw?'✓ ':''}<strong>${f.name}</strong>${f.raw?' · '+f.raw.rows.length+' rows · '+f.raw.headers.length+' cols':' · loading…'}</div>
+        <button class="file-rm" onclick="removeFile(${i})" title="Remove">✕</button>
+      </div>
+      <div class="file-type-wrap">
+        <div class="file-type-label">📋 File type — select what this file contains</div>
+        <select class="file-type-sel" onchange="setFileType(${i},this.value)">
+          ${FILE_TYPES.map(t=>`<option value="${t.v}" ${f.type===t.v?'selected':''}>${t.l}</option>`).join('')}
+        </select>
+      </div>
     </div>`).join('');
 
   // Enable next button if at least one file with SKU data loaded
@@ -540,9 +549,14 @@ const SKU_ALLOWED_MSG='Only letters, numbers and . / - _ allowed';
 function norm(s){return s.toLowerCase().replace(/[^a-z0-9]/g,'');}
 
 function autoCol(f,label){
-  if(!S.raw)return -1;
+  const skuFiles=getSKUFileHeaders();
+  if(skuFiles.length===0)return null;
   const targets=[norm(f.replace('*','')),norm(label),...(ALIASES[f]||[]).map(norm)];
-  return S.raw.headers.findIndex(h=>targets.some(t=>norm(h)===t||norm(h).includes(t)||t.includes(norm(h))));
+  for(const {fi,headers} of skuFiles){
+    const idx=headers.findIndex(h=>targets.some(t=>norm(h)===t||norm(h).includes(t)||t.includes(norm(h))));
+    if(idx!==-1)return `${fi}:${idx}`;
+  }
+  return null;
 }
 
 function parseCSV(txt){
@@ -703,13 +717,46 @@ function updateFormulaPreview(field,isSKU){
 
 // ─── Mapper ─────────────────────────────────────────────────────────────────
 
+// Get scoped headers for item master mapping (SKU files only)
+// Returns [{fileIdx, fileLabel, headers}]
+function getSKUFileHeaders(){
+  const skuTypes=['simple_bundle','simple','bundle','all'];
+  return S.files
+    .map((f,fi)=>({f,fi}))
+    .filter(({f})=>f.raw&&skuTypes.includes(f.type))
+    .map(({f,fi})=>({fi,label:f.name,headers:f.raw.headers}));
+}
+
+function getChannelFileHeaders(){
+  const chTypes=['channel','all','simple_bundle','simple'];
+  return S.files
+    .map((f,fi)=>({f,fi}))
+    .filter(({f})=>f.raw&&chTypes.includes(f.type))
+    .map(({f,fi})=>({fi,label:f.name,headers:f.raw.headers}));
+}
+
+// Build scoped opts: groups columns by file name
+function buildScopedOpts(fileHeaders, skipLabel='skip'){
+  const base=[
+    `<option value="">— ${skipLabel} —</option>`,
+    `<option value="__custom__">✏ Custom value (hardcoded)…</option>`,
+    `<option value="__formula__">⚙ Custom formula (combine fields)…</option>`,
+  ];
+  if(fileHeaders.length===0){
+    base.push('<option disabled>No matching files uploaded</option>');
+    return base.join('');
+  }
+  fileHeaders.forEach(({fi,label,headers})=>{
+    if(fileHeaders.length>1)base.push(`<optgroup label="${label}">`);
+    headers.forEach((h,i)=>base.push(`<option value="${fi}:${i}">${h}</option>`));
+    if(fileHeaders.length>1)base.push('</optgroup>');
+  });
+  return base.join('');
+}
+
 function buildMapper(){
-  const opts=[
-    '<option value="">— skip —</option>',
-    '<option value="__custom__">✏ Custom value (hardcoded)…</option>',
-    '<option value="__formula__">⚙ Custom formula (combine fields)…</option>',
-    ...S.raw.headers.map((h,i)=>`<option value="${i}">${h}</option>`)
-  ].join('');
+  const skuFiles=getSKUFileHeaders();
+  const opts=buildScopedOpts(skuFiles,'skip');
 
   Object.entries(SCHEMA).forEach(([group,fields])=>{
     const el=document.getElementById('tab-'+group);
@@ -747,7 +794,7 @@ function buildMapper(){
     fields.forEach(field=>{
       const ai=autoCol(field.f,field.label);
       const sel=document.getElementById(`mp_${field.f.replace(/[^a-z0-9]/gi,'_')}`);
-      if(sel&&ai!==-1){sel.value=ai;sel.classList.add('mapped');}
+      if(sel&&ai!==null){sel.value=ai;sel.classList.add('mapped');S.mapping[field.f]=ai;}
     });
   });
 }
@@ -794,7 +841,7 @@ function onMap(field,sel,inpId,fmlId,isSKU){
     S.mapping[field]='__formula__';
     if(!S.formulaCfg[field])S.formulaCfg[field]={f1:'',sep:'',f2:''};
   } else {
-    S.mapping[field]=isMapped?parseInt(v):null;
+    S.mapping[field]=isMapped?v:null; // keep as fi:idx string or null
     delete S.formulaCfg[field];
     if(inp){inp.value='';delete S.customVals[field];}
   }
@@ -808,7 +855,13 @@ function onCustomVal(field,inp){
 
 function buildChannelTab(){
   const el=document.getElementById('tab-channels');
-  const opts=['<option value="-1">— not in file —</option>',...S.raw.headers.map((h,i)=>`<option value="${i}">${h}</option>`)].join('');
+  const chFiles=getChannelFileHeaders();
+  // Channel tab: show headers from channel/all files
+  const chHeadersFlat=[];
+  chFiles.forEach(({fi,label,headers})=>{
+    headers.forEach((h,i)=>chHeadersFlat.push({fi,ci:i,h,label}));
+  });
+  const opts=['<option value="-1">— not in file —</option>',...chHeadersFlat.map(({fi,ci,h,label})=>`<option value="${fi}:${ci}">${chFiles.length>1?label+': ':''  }${h}</option>`)].join('');
   let html=`<div class="slbl">Marketplace channel product IDs</div>
   <div class="al al-i" style="margin-bottom:14px;">💡 Map columns that hold marketplace IDs (ASIN, Myntra SKU ID, FSN, etc.). This generates the Channel Mapping file directly — <strong>no separate channel catalog upload needed</strong>.</div>`;
   let detectedAny=false;
@@ -838,7 +891,13 @@ function addChRow(){
   // Ensure channel tab has been built (user may not have visited it)
   const extraRows=document.getElementById('ch-extra-rows');
   if(!extraRows){buildChannelTab();}
-  const opts=['<option value="-1">— not in file —</option>',...S.raw.headers.map((h,i)=>`<option value="${i}">${h}</option>`)].join('');
+  const chFiles=getChannelFileHeaders();
+  // Channel tab: show headers from channel/all files
+  const chHeadersFlat=[];
+  chFiles.forEach(({fi,label,headers})=>{
+    headers.forEach((h,i)=>chHeadersFlat.push({fi,ci:i,h,label}));
+  });
+  const opts=['<option value="-1">— not in file —</option>',...chHeadersFlat.map(({fi,ci,h,label})=>`<option value="${fi}:${ci}">${chFiles.length>1?label+': ':''  }${h}</option>`)].join('');
   const chOpts=['Amazon','Flipkart','Myntra','Meesho','Ajio','Nykaa','Shopify','Other'].map(c=>`<option>${c}</option>`).join('');
   const id='cr_'+Date.now();
   const div=document.createElement('div');
@@ -1151,14 +1210,22 @@ function swTab(name,btn){
 function collectChCols(){
   S.chCols=[];
   // Auto-detected rows — .mr divs with data-ch on them (inside #tab-channels)
+  function parseColRef(val){
+    if(!val||val==='-1')return null;
+    if(val.includes(':')){
+      const [fi,ci]=val.split(':').map(Number);
+      const f=S.files[fi];
+      return f?{fi,ci,colName:f.raw.headers[ci]}:null;
+    }
+    return null;
+  }
   document.querySelectorAll('#tab-channels .mr[data-ch]').forEach(row=>{
     const ch=row.dataset.ch;
     const sel=row.querySelector('select');
     if(!sel)return;
-    const idx=parseInt(sel.value);
-    if(!isNaN(idx)&&idx>=0)S.chCols.push({channel:ch,colIdx:idx,colName:S.raw.headers[idx]});
+    const ref=parseColRef(sel.value);
+    if(ref)S.chCols.push({channel:ch,colIdx:ref.ci,fileIdx:ref.fi,colName:ref.colName});
   });
-  // Manually added rows (inside #ch-extra-rows)
   const extra=document.getElementById('ch-extra-rows');
   if(extra){
     extra.querySelectorAll('.mr').forEach(row=>{
@@ -1166,8 +1233,8 @@ function collectChCols(){
       const colSel=row.querySelector('.ch-col-sel');
       if(!nameSel||!colSel)return;
       const ch=nameSel.value;
-      const idx=parseInt(colSel.value);
-      if(ch&&!isNaN(idx)&&idx>=0)S.chCols.push({channel:ch,colIdx:idx,colName:S.raw.headers[idx]});
+      const ref=parseColRef(colSel.value);
+      if(ch&&ref)S.chCols.push({channel:ch,colIdx:ref.ci,fileIdx:ref.fi,colName:ref.colName});
     });
   }
 }
@@ -1206,10 +1273,29 @@ function buildChDet(){
 
 // ─── Value resolution ─────────────────────────────────────────────────────────
 
+function resolveColIdx(mapping){
+  // mapping can be 'fi:colIdx' string, plain number, or special value
+  if(mapping===null||mapping===undefined||mapping==='')return{fi:-1,ci:-1};
+  if(mapping==='__custom__'||mapping==='__formula__')return{fi:-1,ci:-1,special:mapping};
+  if(typeof mapping==='string'&&mapping.includes(':')){
+    const [fi,ci]=mapping.split(':').map(Number);
+    return{fi,ci};
+  }
+  // Legacy plain number — use primary raw
+  const ci=parseInt(mapping);
+  return{fi:-1,ci:isNaN(ci)?-1:ci};
+}
+
+function getRowFromFile(fi,row){
+  // fi=-1 means use primary S.raw row (legacy), else get from files[fi]
+  // In practice row is always passed in directly now
+  return row;
+}
+
 function getV(row,f){
-  const idx=S.mapping[f];
-  if(idx==='__custom__') return S.customVals[f]||'';
-  if(idx==='__formula__'){
+  const mapping=S.mapping[f];
+  if(mapping==='__custom__') return S.customVals[f]||'';
+  if(mapping==='__formula__'){
     const cfg=S.formulaCfg[f]||{};
     const v1=getFormulaPartValue(cfg,'f1',row);
     const v2=getFormulaPartValue(cfg,'f2',row);
@@ -1218,7 +1304,16 @@ function getV(row,f){
     if(f==='Product Code*')result=result.replace(SKU_SPECIAL,'');
     return result;
   }
-  if(idx!==null&&idx!==undefined&&idx>=0)return String(row[idx]??'').trim();
+  if(mapping===null||mapping===undefined)return'';
+  if(typeof mapping==='string'&&mapping.includes(':')){
+    const [fi,ci]=mapping.split(':').map(Number);
+    // fi tells us which file this col belongs to, but row is already the right row
+    // since we iterate files separately in generate()
+    return String(row[ci]??'').trim();
+  }
+  // Legacy plain number
+  const idx=parseInt(mapping);
+  if(!isNaN(idx)&&idx>=0)return String(row[idx]??'').trim();
   return'';
 }
 
@@ -1272,13 +1367,19 @@ function generate(){
       if(f.raw&&['channel','all','simple_bundle','simple'].includes(f.type))
         f.raw.rows.forEach(r=>citSourceRows.push(r));
     });
-    citSourceRows.forEach(row=>{
-      const uwSKU=getV(row,'Product Code*');
-      S.chCols.forEach(cfg=>{
-        let chId=String(row[cfg.colIdx]??'').trim();
-        if(!chId)return;
-        if(/^\d+\.0$/.test(chId))chId=chId.slice(0,-2);
-        citRows.push([cfg.channel,chId,uwSKU,uwSKU,'true','false','INR']);
+    // Group rows by file for correct column index lookup
+    S.files.forEach((file,fi)=>{
+      if(!file.raw||!['channel','all','simple_bundle','simple'].includes(file.type))return;
+      const relevantChCols=S.chCols.filter(c=>c.fileIdx===fi);
+      if(relevantChCols.length===0)return;
+      file.raw.rows.forEach(row=>{
+        const uwSKU=getV(row,'Product Code*');
+        relevantChCols.forEach(cfg=>{
+          let chId=String(row[cfg.colIdx]??'').trim();
+          if(!chId)return;
+          if(/^\d+\.0$/.test(chId))chId=chId.slice(0,-2);
+          citRows.push([cfg.channel,chId,uwSKU,uwSKU,'true','false','INR']);
+        });
       });
     });
     S.citOut={headers:citH,rows:citRows};
